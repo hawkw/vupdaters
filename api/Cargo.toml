@@ -8,10 +8,14 @@ edition = "2021"
 [features]
 client = ["reqwest"]
 
-
 [dependencies]
 http = { workspace = true }
-reqwest = { workspace = true, optional = true,  default-features = false, features = ["json"] }
+reqwest = { workspace = true, optional = true,  default-features = false, features = ["json", "multipart"] }
+miette = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_with = { workspace = true, features = ["macros"] }
 thiserror = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
+
+[dev-dependencies]
+tokio = { workspace = true }
