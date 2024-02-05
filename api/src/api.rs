@@ -38,6 +38,14 @@ pub enum ApiError {
     InvalidValue(#[from] ValueError),
 }
 
+#[derive(Debug, Error, miette::Diagnostic)]
+pub enum ValueParseError {
+    #[error("{0}")]
+    InvalidValue(#[from] ValueError),
+    #[error("not a u8: {0}")]
+    NotAU8(#[from] std::num::ParseIntError),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash, DeserializeFromStr, SerializeDisplay)]
 pub struct DialId(Arc<str>);
 
@@ -166,5 +174,14 @@ impl TryFrom<u8> for Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for Value {
+    type Err = ValueParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value = s.trim().parse()?;
+        Ok(Value::new(value)?)
     }
 }

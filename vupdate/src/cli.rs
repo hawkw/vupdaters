@@ -13,6 +13,7 @@ pub struct Args {
         short = 's',
         env = "VU_DIALS_SERVER_ADDR",
         default_value = "http://localhost:5340",
+        value_hint = clap::ValueHint::Url,
         global = true
     )]
     pub server: reqwest::Url,
@@ -46,6 +47,17 @@ pub enum Command {
 pub enum DialCommand {
     /// Get detailed status information about this dial.
     Status,
+    /// Set a dial's value.
+    Set {
+        /// The new value to set the dial to.
+        value: vu_api::api::Value,
+    },
+    /// Set the dial's background image.
+    SetImage {
+        /// Path to the new image file.
+        #[clap(value_hint = clap::ValueHint::FilePath)]
+        path: Utf8PathBuf,
+    },
 }
 
 #[derive(Debug, clap::Parser)]

@@ -3,13 +3,12 @@ use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use vu_api::{
-    api::{DialId, Value},
+    api::{Backlight, DialId, Value},
     client::Client,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
-    update_interval: std::time::Duration,
     dials: HashMap<DialId, DialConfig>,
 }
 
@@ -17,6 +16,7 @@ pub struct Config {
 pub struct DialConfig {
     name: String,
     data: Data,
+    update_interval: std::time::Duration,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +53,7 @@ pub async fn gen_config(
             DialConfig {
                 name: name.to_string(),
                 data,
+                update_interval: Duration::from_secs(1),
             },
         );
     }
@@ -77,15 +78,11 @@ pub async fn gen_config(
 }
 
 pub async fn run(client: Client, config: Config) -> miette::Result<()> {
-    use systemstat::Platform;
-
-    let mut interval = tokio::time::interval(config.update_interval);
-    let systemstat = systemstat::System::new();
-
-    for (uid, dial) in &config.dials {
+    let mut tasks = tokio::task::JoinSet::new();
+    for (uid, dial) in config.dials {
         tracing::info!(?uid, data = ?dial.data, "configuring dial");
         client
-            .set_name(uid, &dial.name)
+            .set_name(&uid, &dial.name)
             .await
             .with_context(|| format!("failed to set name for {uid} to {}", dial.name))?;
 
@@ -116,6 +113,8 @@ pub async fn run(client: Client, config: Config) -> miette::Result<()> {
             };
         }
 
+        let white = Backlight::new(50, 50, 50)?;
+
         static MEM_IMG: ImgFile = imgfile!("mem.png");
         static CPU_LOAD_IMG: ImgFile = imgfile!("cpu_load.png");
         static CPU_TEMP_IMG: ImgFile = imgfile!("cpu_temp.png");
@@ -133,102 +132,104 @@ pub async fn run(client: Client, config: Config) -> miette::Result<()> {
         };
 
         if let Some(img) = img {
-            img.set_img(&client, uid).await?;
+            img.set_img(&client, &uid).await?;
         }
+        client.set_backlight(&uid, white).await?;
+
+        tasks.spawn(run_dial(uid, dial, client.clone()));
     }
 
-    tracing::info!("updating dials every {:?}...", config.update_interval);
-
-    loop {
-        interval.tick().await;
-        let mut join = Vec::new();
-        for (uid, dial) in &config.dials {
-            let value = match dial.data {
-                Data::CpuLoad => {
-                    let load = systemstat.load_average();
-                    match load {
-                        Ok(systemstat::LoadAverage { one, .. }) => {
-                            tracing::debug!("Load (1 min): {one}%");
-                            Value::new(one as u8)?
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "failed to read load average");
-                            continue;
-                        }
-                    }
-                }
-                Data::Mem => {
-                    let mem = systemstat.memory();
-                    // tracing::info!("Memory: {mem:?}");
-                    match mem {
-                        Ok(systemstat::Memory { total, free, .. }) => {
-                            let percent = free.0 / (total.0 / 100);
-                            tracing::debug!("Memory: {percent}% free");
-                            Value::new(percent as u8)?
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "failed to read memory usage");
-                            continue;
-                        }
-                    }
-                }
-                Data::Swap => {
-                    let swap = systemstat.swap();
-                    // tracing::info!("Swap: {mem:?}");
-                    match swap {
-                        Ok(systemstat::Swap { total, free, .. }) => {
-                            let percent = free.0 / (total.0 / 100);
-                            tracing::debug!("Swap: {percent}% free");
-                            Value::new(percent as u8)?
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "failed to read swap usage");
-                            continue;
-                        }
-                    }
-                }
-                Data::CpuTemp => {
-                    let temp = systemstat.cpu_temp();
-                    match temp {
-                        Ok(temp) => {
-                            tracing::debug!("CPU temp: {temp}°C");
-                            Value::new(temp as u8)?
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "failed to read CPU temp");
-                            continue;
-                        }
-                    }
-                }
-                _ => continue,
-            };
-            join.push(tokio::spawn({
-                let uid = uid.clone();
-                let client = client.clone();
-                let data = dial.data.clone();
-                async move {
-                    let res = async move {
-                        client.set_value(&uid, value).await?;
-                        Ok::<(), miette::Error>(())
-                    }
-                    .await;
-                    if let Err(error) = res {
-                        tracing::error!(?data, ?error, "failed to set dial value");
-                    }
-                }
-            }));
-        }
-        for f in join {
-            let _ = f.await;
-        }
+    while let Some(next) = tasks.join_next().await {
+        next.into_diagnostic()??;
     }
+    Ok(())
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            update_interval: Duration::from_secs(3),
-            dials: Default::default(),
-        }
+#[tracing::instrument(
+    level = tracing::Level::INFO,
+    name = "dial",
+    fields(message = %dial),
+    skip_all
+)]
+async fn run_dial(
+    dial: DialId,
+    DialConfig {
+        data,
+        update_interval,
+        ..
+    }: DialConfig,
+    client: Client,
+) -> miette::Result<()> {
+    use systemstat::Platform;
+    tracing::info!("updating dial {dial} with {data:?} every {update_interval:?}");
+    let mut interval = tokio::time::interval(update_interval);
+    let systemstat = systemstat::System::new();
+    loop {
+        interval.tick().await;
+        let value = match data {
+            Data::CpuLoad => {
+                let load = systemstat.load_average();
+                match load {
+                    Ok(systemstat::LoadAverage { one, .. }) => {
+                        tracing::debug!("Load (1 min): {one}%");
+                        Value::new(one as u8)?
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to read load average");
+                        continue;
+                    }
+                }
+            }
+            Data::Mem => {
+                let mem = systemstat.memory();
+                // tracing::info!("Memory: {mem:?}");
+                match mem {
+                    Ok(systemstat::Memory { total, free, .. }) => {
+                        let percent_free = free.0 / (total.0 / 100);
+                        let percent_used = 100 - percent_free;
+                        tracing::debug!("Memory: {percent_used}% used");
+                        Value::new(percent_used as u8)?
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to read memory usage");
+                        continue;
+                    }
+                }
+            }
+            Data::Swap => {
+                let swap = systemstat.swap();
+                // tracing::info!("Swap: {mem:?}");
+                match swap {
+                    Ok(systemstat::Swap { total, free, .. }) => {
+                        let percent_free = free.0 / (total.0 / 100);
+                        let percent_used = 100 - percent_free;
+                        tracing::debug!("Swap: {percent_used}% used");
+                        Value::new(percent_used as u8)?
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to read swap usage");
+                        continue;
+                    }
+                }
+            }
+            Data::CpuTemp => {
+                let temp = systemstat.cpu_temp();
+                match temp {
+                    Ok(temp) => {
+                        tracing::debug!("CPU temp: {temp}°C");
+                        Value::new(temp as u8)?
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to read CPU temp");
+                        continue;
+                    }
+                }
+            }
+            _ => miette::bail!("unsupported data type {data:?}"),
+        };
+        client
+            .set_value(&dial, value)
+            .await
+            .with_context(|| format!("failed to set value for {dial} to {value}"))?;
     }
 }

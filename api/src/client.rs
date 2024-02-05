@@ -1,6 +1,5 @@
-use crate::api::ApiError;
 pub use reqwest::ClientBuilder;
-use reqwest::{header::HeaderValue, IntoUrl, Response, Url};
+use reqwest::{header::HeaderValue, IntoUrl, Url};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]

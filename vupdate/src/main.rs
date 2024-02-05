@@ -26,6 +26,8 @@ async fn main() -> miette::Result<()> {
             println!("{status:#?}");
         }
 
+        Command::Dial { .. } => todo!(),
+
         Command::Daemon(DaemonCommand { config, gen_config }) => {
             if gen_config {
                 vupdate::daemon::gen_config(&client, config).await?;
