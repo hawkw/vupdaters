@@ -19,7 +19,7 @@ pub struct DialConfig {
     update_interval: std::time::Duration,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Data {
     #[serde(rename = "CPU Load")]
     CpuLoad,
@@ -165,17 +165,26 @@ async fn run_dial(
     let mut interval = tokio::time::interval(update_interval);
     let systemstat = systemstat::System::new();
     loop {
-        interval.tick().await;
         let value = match data {
             Data::CpuLoad => {
-                let load = systemstat.load_average();
-                match load {
-                    Ok(systemstat::LoadAverage { one, .. }) => {
-                        tracing::debug!("Load (1 min): {one}%");
-                        Value::new(one as u8)?
+                let load = match systemstat.cpu_load_aggregate() {
+                    Ok(load) => load,
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to start load aggregate measurement");
+                        continue;
+                    }
+                };
+                interval.tick().await;
+
+                match load.done() {
+                    Ok(load) => {
+                        let percent =
+                            (load.user + load.system + load.interrupt + load.nice) * 100.0;
+                        tracing::debug!("CPU Load: {percent}%");
+                        Value::new(percent as u8)?
                     }
                     Err(error) => {
-                        tracing::warn!(%error, "failed to read load average");
+                        tracing::warn!(%error, "failed to read load aggregate");
                         continue;
                     }
                 }
@@ -231,5 +240,8 @@ async fn run_dial(
             .set_value(&dial, value)
             .await
             .with_context(|| format!("failed to set value for {dial} to {value}"))?;
+        if data != Data::CpuLoad {
+            interval.tick().await;
+        }
     }
 }
