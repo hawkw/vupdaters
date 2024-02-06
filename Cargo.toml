@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "api",
-    "vupdate",
+    "vupdaters",
 ]
 
 [workspace.dependencies]
@@ -11,7 +11,7 @@ camino = "1"
 directories = { version = "5.0.1"}
 http = { version = "1" }
 reqwest = { version = "0.11.24", default-features = false }
-miette = { version = "6.0.1" }
+miette = { version = "7.0.0" }
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
 serde_with = { version = "3.6.0" }
@@ -21,3 +21,5 @@ toml = { version = "0.8.9" }
 thiserror = { version = "1.0" }
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18" }
+tracing-journald = { version = "0.3.0" }
+url = { version = "2.5.0" }
