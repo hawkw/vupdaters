@@ -164,7 +164,7 @@ impl Dial {
         let part = part.file_name(filename.to_string());
         let multipart = reqwest::multipart::Form::new().part("imgfile", part);
         let mut req = self
-            .build_request(Method::POST, "image/set/")?
+            .build_request(Method::POST, "image/set")?
             .query(&[("imgfile", filename)]);
         if force {
             req = req.query(&[("force", "true")])
