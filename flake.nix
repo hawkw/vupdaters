@@ -75,8 +75,10 @@
         cfg = config.services.vu-dials.vupdated;
         dirname = "vupdated";
         defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
+        serverUnit = "VU-Server.service";
 
         configFormat = pkgs.formats.toml { };
+        configFile = configFormat.generate "${dirname}.toml" cfg.dials;
       in
       {
         options.services.vu-dials.vupdated = with types; {
@@ -146,39 +148,32 @@
             };
         };
 
-        config = mkIf cfg.enable
-          (
-            let
-              configFile = lib.traceVal (configFormat.generate "vupdated.toml" cfg.dials);
-              serverUnit = "VU-Server.service";
-            in
-            {
-              systemd.user.services.vupdated = {
-                description = "Streacom VU-1 dials update daemon";
-                wantedBy = [ "multi-user.target" ];
-                after = [ serverUnit ];
-                requisite = [ serverUnit ];
-                script = "vupdated";
-                scriptArgs = "--config ${configFile}";
-                path = [ self.packages.${pkgs.system}.default ];
-                environment = {
-                  VU_SERVER_API_KEY = "${cfg.client.apiKey}";
-                  VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
-                };
-                serviceConfig = {
-                  Restart = "on-failure";
-                  RestartSec = "5s";
-                  DynamicUser = "yes";
-                  RuntimeDirectory = dirname;
-                  RuntimeDirectoryMode = "0755";
-                  StateDirectory = dirname;
-                  StateDirectoryMode = "0755";
-                  CacheDirectory = dirname;
-                  CacheDirectoryMode = "0750";
-                };
-              };
-            }
-          );
+        config = mkIf cfg.enable {
+          systemd.user.services.vupdated = {
+            description = "Streacom VU-1 dials update daemon";
+            wantedBy = [ "multi-user.target" ];
+            after = [ serverUnit ];
+            requisite = [ serverUnit ];
+            script = "vupdated";
+            scriptArgs = "--config ${configFile}";
+            path = [ self.packages.${pkgs.system}.default ];
+            environment = {
+              VU_SERVER_API_KEY = "${cfg.client.apiKey}";
+              VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
+            };
+            serviceConfig = {
+              Restart = "on-failure";
+              RestartSec = "5s";
+              DynamicUser = "yes";
+              RuntimeDirectory = dirname;
+              RuntimeDirectoryMode = "0755";
+              StateDirectory = dirname;
+              StateDirectoryMode = "0755";
+              CacheDirectory = dirname;
+              CacheDirectoryMode = "0750";
+            };
+          };
+        };
       };
     };
 }
