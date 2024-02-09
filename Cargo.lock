@@ -1612,6 +1612,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vu-protocol"
+version = "0.1.0"
+
+[[package]]
 name = "vupdaters"
 version = "0.1.0"
 dependencies = [
