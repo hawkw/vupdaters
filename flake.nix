@@ -21,12 +21,12 @@
                 inherit system overlays;
               };
             in
-            function { inherit system pkgs; });
+            function pkgs);
 
       src = ./.;
     in
     {
-      packages = forAllSystems ({ pkgs, ... }: with pkgs; let
+      packages = forAllSystems (pkgs: with pkgs; let
         # use the Rust toolchain specified in the project's rust-toolchain.toml
         rustToolchain = pkgsBuildHost.rust-bin.fromRustupToolchainFile
           ./rust-toolchain.toml;
@@ -53,13 +53,13 @@
             };
           };
       });
-      devShells = forAllSystems ({ pkgs, system }: {
-        default = pkgs.mkShell {
+      devShells = forAllSystems (pkgs: with pkgs; {
+        default = mkShell {
           buildInputs = [ self.packages.${system}.default.buildInputs ];
         };
       });
       apps = forAllSystems
-        ({ system, ... }: {
+        (pkgs: with pkgs; {
           dialctl =
             {
               type = "app";
@@ -158,7 +158,7 @@
                 requisite = [ serverUnit ];
                 script = "vupdated";
                 scriptArgs = "--config ${configFile}";
-                path = [ self.packages.${system}.default ];
+                path = [ self.packages.${pkgs.system}.default ];
                 environment = {
                   VU_SERVER_API_KEY = "${cfg.client.apiKey}";
                   VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
