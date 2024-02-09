@@ -84,26 +84,26 @@
             default = { };
 
             type = submodule {
-              hostname = mkOption {
-                type = uniq str;
-                default = "localhost";
-                example = "localhost";
-                description = "The server's hostname. Probably this should be localhost.";
-              };
-              port = mkOption
-                {
+              options = {
+                hostname = mkOption {
+                  type = uniq str;
+                  default = "localhost";
+                  example = "localhost";
+                  description = "The server's hostname. Probably this should be localhost.";
+                };
+                port = mkOption {
                   type = uniq port;
                   default = 5340;
                   example = 5340;
                   description = "The server's HTTP port.";
                 };
-              apiKey = mkOption
-                {
+                apiKey = mkOption {
                   type = uniq string;
                   default = defaultApiKey;
                   example = defaultApiKey;
                   description = "API key to use when communicating with the VU-1 HTTP server";
                 };
+              };
             };
           };
           dials =
