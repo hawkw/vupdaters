@@ -75,6 +75,8 @@
         cfg = config.services.vu-dials.vupdated;
         dirname = "vupdated";
         defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
+
+        configFormat = pkgs.formats.toml { };
       in
       {
         options.services.vu-dials.vupdated = with types; {
@@ -138,7 +140,7 @@
             in
             mkOption {
               description = "Configuration for the VU-1 dials. This attrset is used to generate the vupdated TOML config file.";
-              type = attrsOf inferred;
+              type = configFormat.type;
               default = defaultDials;
               example = defaultDials;
             };
@@ -147,7 +149,6 @@
         config = mkIf cfg.enable
           (
             let
-              configFormat = pkgs.formats.toml { };
               configFile = lib.traceVal (configFormat.generate "vupdated.toml" cfg.dials);
               serverUnit = "VU-Server.service";
             in
