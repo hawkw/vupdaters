@@ -71,5 +71,107 @@
           };
           default = self.apps.${system}.dialctl;
         });
+      nixosModules.default = { config, lib, pkgs, ... }: with lib; let
+        cfg = config.services.vu-dials.vupdated;
+        dirname = "vupdated";
+        defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
+      in
+      {
+        options.services.vu-dials.vupdated = with types; {
+          enable = mkEnableOption "Enable the VU-1 dials update daemon";
+          client = mkOption {
+            description = "Configuration for the VU-Server HTTP client.";
+            default = { };
+
+            type = submodule {
+              hostname = mkOption {
+                type = uniq str;
+                default = "localhost";
+                example = "localhost";
+                description = "The server's hostname. Probably this should be localhost.";
+              };
+              port = mkOption
+                {
+                  type = uniq port;
+                  default = 5340;
+                  example = 5340;
+                  description = "The server's HTTP port.";
+                };
+              apiKey = mkOption
+                {
+                  type = uniq string;
+                  default = defaultApiKey;
+                  example = defaultApiKey;
+                  description = "API key to use when communicating with the VU-1 HTTP server";
+                };
+            };
+            dials =
+              let
+                defaultUpdateInterval = {
+                  secs = 1;
+                  nanos = 0;
+                };
+                defaultDials =
+                  {
+                    "CPU Load" = {
+                      index = 0;
+                      metric = "cpu-load";
+                      update_interval = defaultUpdateInterval;
+                    };
+                    "Memory Usage" = {
+                      index = 1;
+                      metric = "mem";
+                      update_interval = defaultUpdateInterval;
+                    };
+                    "CPU Temperature" = {
+                      index = 2;
+                      metric = "cpu-temp";
+                      update_interval = defaultUpdateInterval;
+                    };
+                    "Swap Usage" = {
+                      index = 3;
+                      metric = "swap";
+                      update_interval = defaultUpdateInterval;
+                    };
+                  };
+              in
+              mkOption
+                {
+                  description = "Configuration for the VU-1 dials. This attrset is used to generate the vupdated TOML config file.";
+                  type = attrsOf inferred;
+                  default = defaultDials;
+                  example = defaultDials;
+                };
+            configFile = lib.toTOML dials;
+          };
+
+          config = mkIf cfg.enable {
+            systemd.services.vupdated = {
+              description = "Streacom VU-1 dials update daemon";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "VU-Server.service" ];
+              requisite = [ "VU-Server.service" ];
+              script = "vupdated --config ${cfg.configFile}";
+              path = [ self.packages.${system}.default ];
+              environment = ''
+                VU_SERVER_API_KEY = "${cfg.client.apiKey}";
+                VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
+              '';
+              serviceConfig = {
+                Restart = "on-failure";
+                RestartSec = "5s";
+                DynamicUser = "yes";
+                RuntimeDirectory = dirname;
+                RuntimeDirectoryMode = "0755";
+                StateDirectory = dirname;
+                StateDirectoryMode = "0755";
+                CacheDirectory = dirname;
+                CacheDirectoryMode = "0750";
+              };
+            };
+          };
+        };
+
+      };
     };
 }
