@@ -156,12 +156,13 @@
                 wantedBy = [ "multi-user.target" ];
                 after = [ serverUnit ];
                 requisite = [ serverUnit ];
-                script = "vupdated --config ${configFile}";
+                script = "vupdated";
+                scriptArgs = "--config ${configFile}";
                 path = [ self.packages.${system}.default ];
-                environment = ''
+                environment = {
                   VU_SERVER_API_KEY = "${cfg.client.apiKey}";
                   VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
-                '';
+                };
                 serviceConfig = {
                   Restart = "on-failure";
                   RestartSec = "5s";
