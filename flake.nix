@@ -78,7 +78,9 @@
         serverUnit = "VU-Server.service";
 
         configFormat = pkgs.formats.toml { };
-        configFile = configFormat.generate "${dirname}.toml" cfg.dials;
+        configFile = configFormat.generate "${dirname}.toml" {
+          dials = cfg.dials;
+        };
       in
       {
         options.services.vu-dials.vupdated = with types; {
