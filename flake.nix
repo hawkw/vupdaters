@@ -142,36 +142,41 @@
                   default = defaultDials;
                   example = defaultDials;
                 };
-            configFile = lib.toTOML dials;
           };
 
-          config = mkIf cfg.enable {
-            systemd.user.services.vupdated = {
-              description = "Streacom VU-1 dials update daemon";
-              wantedBy = [ "multi-user.target" ];
-              after = [ "VU-Server.service" ];
-              requisite = [ "VU-Server.service" ];
-              script = "vupdated --config ${cfg.configFile}";
-              path = [ self.packages.${system}.default ];
-              environment = ''
-                VU_SERVER_API_KEY = "${cfg.client.apiKey}";
-                VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
-              '';
-              serviceConfig = {
-                Restart = "on-failure";
-                RestartSec = "5s";
-                DynamicUser = "yes";
-                RuntimeDirectory = dirname;
-                RuntimeDirectoryMode = "0755";
-                StateDirectory = dirname;
-                StateDirectoryMode = "0755";
-                CacheDirectory = dirname;
-                CacheDirectoryMode = "0750";
-              };
-            };
-          };
+          config = mkIf cfg.enable
+            (
+              let
+                configFile = lib.toTOML dials;
+                serverUnit = "VU-Server.service";
+              in
+              {
+                systemd.user.services.vupdated = {
+                  description = "Streacom VU-1 dials update daemon";
+                  wantedBy = [ "multi-user.target" ];
+                  after = [ serverUnit ];
+                  requisite = [ serverUnit ];
+                  script = "vupdated --config ${configFile}";
+                  path = [ self.packages.${system}.default ];
+                  environment = ''
+                    VU_SERVER_API_KEY = "${cfg.client.apiKey}";
+                    VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
+                  '';
+                  serviceConfig = {
+                    Restart = "on-failure";
+                    RestartSec = "5s";
+                    DynamicUser = "yes";
+                    RuntimeDirectory = dirname;
+                    RuntimeDirectoryMode = "0755";
+                    StateDirectory = dirname;
+                    StateDirectoryMode = "0755";
+                    CacheDirectory = dirname;
+                    CacheDirectoryMode = "0750";
+                  };
+                };
+              }
+            );
         };
-
       };
     };
 }
