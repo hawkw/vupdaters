@@ -147,7 +147,7 @@
         config = mkIf cfg.enable
           (
             let
-              configFile = builtins.trace lib.toTOML dials;
+              configFile = builtins.trace lib.toTOML cfg.dials;
               serverUnit = "VU-Server.service";
             in
             {
