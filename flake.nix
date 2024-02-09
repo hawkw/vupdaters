@@ -105,78 +105,77 @@
                   description = "API key to use when communicating with the VU-1 HTTP server";
                 };
             };
-            dials =
-              let
-                defaultUpdateInterval = {
-                  secs = 1;
-                  nanos = 0;
-                };
-                defaultDials =
-                  {
-                    "CPU Load" = {
-                      index = 0;
-                      metric = "cpu-load";
-                      update_interval = defaultUpdateInterval;
-                    };
-                    "Memory Usage" = {
-                      index = 1;
-                      metric = "mem";
-                      update_interval = defaultUpdateInterval;
-                    };
-                    "CPU Temperature" = {
-                      index = 2;
-                      metric = "cpu-temp";
-                      update_interval = defaultUpdateInterval;
-                    };
-                    "Swap Usage" = {
-                      index = 3;
-                      metric = "swap";
-                      update_interval = defaultUpdateInterval;
-                    };
-                  };
-              in
-              mkOption
-                {
-                  description = "Configuration for the VU-1 dials. This attrset is used to generate the vupdated TOML config file.";
-                  type = attrsOf inferred;
-                  default = defaultDials;
-                  example = defaultDials;
-                };
           };
-
-          config = mkIf cfg.enable
-            (
-              let
-                configFile = lib.toTOML dials;
-                serverUnit = "VU-Server.service";
-              in
-              {
-                systemd.user.services.vupdated = {
-                  description = "Streacom VU-1 dials update daemon";
-                  wantedBy = [ "multi-user.target" ];
-                  after = [ serverUnit ];
-                  requisite = [ serverUnit ];
-                  script = "vupdated --config ${configFile}";
-                  path = [ self.packages.${system}.default ];
-                  environment = ''
-                    VU_SERVER_API_KEY = "${cfg.client.apiKey}";
-                    VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
-                  '';
-                  serviceConfig = {
-                    Restart = "on-failure";
-                    RestartSec = "5s";
-                    DynamicUser = "yes";
-                    RuntimeDirectory = dirname;
-                    RuntimeDirectoryMode = "0755";
-                    StateDirectory = dirname;
-                    StateDirectoryMode = "0755";
-                    CacheDirectory = dirname;
-                    CacheDirectoryMode = "0750";
+          dials =
+            let
+              defaultUpdateInterval = {
+                secs = 1;
+                nanos = 0;
+              };
+              defaultDials =
+                {
+                  "CPU Load" = {
+                    index = 0;
+                    metric = "cpu-load";
+                    update_interval = defaultUpdateInterval;
+                  };
+                  "Memory Usage" = {
+                    index = 1;
+                    metric = "mem";
+                    update_interval = defaultUpdateInterval;
+                  };
+                  "CPU Temperature" = {
+                    index = 2;
+                    metric = "cpu-temp";
+                    update_interval = defaultUpdateInterval;
+                  };
+                  "Swap Usage" = {
+                    index = 3;
+                    metric = "swap";
+                    update_interval = defaultUpdateInterval;
                   };
                 };
-              }
-            );
+            in
+            mkOption {
+              description = "Configuration for the VU-1 dials. This attrset is used to generate the vupdated TOML config file.";
+              type = attrsOf inferred;
+              default = defaultDials;
+              example = defaultDials;
+            };
         };
+
+        config = mkIf cfg.enable
+          (
+            let
+              configFile = lib.toTOML dials;
+              serverUnit = "VU-Server.service";
+            in
+            {
+              systemd.user.services.vupdated = {
+                description = "Streacom VU-1 dials update daemon";
+                wantedBy = [ "multi-user.target" ];
+                after = [ serverUnit ];
+                requisite = [ serverUnit ];
+                script = "vupdated --config ${configFile}";
+                path = [ self.packages.${system}.default ];
+                environment = ''
+                  VU_SERVER_API_KEY = "${cfg.client.apiKey}";
+                  VU_DIALS_SERVER_ADDR = "http://${cfg.client.hostname}:${toString cfg.client.port}";
+                '';
+                serviceConfig = {
+                  Restart = "on-failure";
+                  RestartSec = "5s";
+                  DynamicUser = "yes";
+                  RuntimeDirectory = dirname;
+                  RuntimeDirectoryMode = "0755";
+                  StateDirectory = dirname;
+                  StateDirectoryMode = "0755";
+                  CacheDirectory = dirname;
+                  CacheDirectoryMode = "0750";
+                };
+              };
+            }
+          );
       };
     };
 }
