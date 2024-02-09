@@ -148,7 +148,7 @@
           (
             let
               configFormat = pkgs.formats.toml { };
-              configFile = builtins.trace (configFormat.generate cfg.dials);
+              configFile = lib.traceVal (configFormat.generate cfg.dials);
               serverUnit = "VU-Server.service";
             in
             {
