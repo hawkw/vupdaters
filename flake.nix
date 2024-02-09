@@ -146,7 +146,7 @@
           };
 
           config = mkIf cfg.enable {
-            systemd.services.vupdated = {
+            systemd.user.services.vupdated = {
               description = "Streacom VU-1 dials update daemon";
               wantedBy = [ "multi-user.target" ];
               after = [ "VU-Server.service" ];
