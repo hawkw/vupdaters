@@ -1,5 +1,3 @@
-use camino::{Utf8Path, Utf8PathBuf};
-use clap::ArgGroup;
 use miette::{Context, IntoDiagnostic};
 
 #[derive(Clone, Debug, clap::Args)]
@@ -54,7 +52,9 @@ impl OutputArgs {
                 .context("could not connect to journald!")?;
             subcriber.with(layer).init();
         } else {
-            subcriber.with(tracing_subscriber::fmt::layer()).init();
+            subcriber
+                .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+                .init();
         }
 
         Ok(())

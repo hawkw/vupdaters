@@ -5,6 +5,11 @@ members = [
     "vupdaters",
 ]
 
+[workspace.package]
+edition = "2021"
+authors = ["Eliza Weisman <eliza@elizas.website>"]
+license = "MIT"
+
 [workspace.dependencies]
 clap = { version = "4" }
 camino = "1"

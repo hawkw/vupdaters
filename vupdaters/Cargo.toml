@@ -1,9 +1,10 @@
 [package]
 name = "vupdaters"
 version = "0.1.0"
-edition = "2021"
-authors = ["Eliza Weisman <eliza@elizas.website"]
 description = "Tools for updating VU-Dials."
+edition = { workspace = true }
+authors = ["Eliza Weisman <eliza@elizas.website>"]
+license = "MIT"
 
 # See more keys and their definitions at
 # https://doc.rust-lang.org/cargo/reference/manifest.html
