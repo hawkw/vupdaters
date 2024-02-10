@@ -161,7 +161,7 @@
             requisite = [ serverUnit ];
             script = ''
               vupdated \
-                --config /etc/${dirname}/config.toml \
+                --config /etc/${dirname}.toml \
                 --key ${cfg.client.apiKey} \
                 --server http://${cfg.client.hostname}:${toString cfg.client.port}
             '';
