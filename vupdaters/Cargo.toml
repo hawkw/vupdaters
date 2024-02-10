@@ -3,6 +3,7 @@ name = "vupdaters"
 version = "0.1.0"
 description = "Tools for updating VU-Dials."
 edition = { workspace = true }
+repository = { workspace = true }
 authors = ["Eliza Weisman <eliza@elizas.website>"]
 license = "MIT"
 

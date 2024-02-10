@@ -151,7 +151,7 @@
         };
 
         config = mkIf cfg.enable {
-          environment.etc."${dirname}/config.toml".source = configFile;
+          environment.etc."${dirname}.toml".source = configFile;
           systemd.services.vupdated = {
             description = "Streacom VU-1 dials update daemon";
             wantedBy = [ "multi-user.target" ];
@@ -167,7 +167,7 @@
             serviceConfig = {
               Restart = "on-failure";
               RestartSec = "5s";
-              DynamicUser = "yes";
+              DynamicUser = true;
               RuntimeDirectory = dirname;
               RuntimeDirectoryMode = "0755";
               StateDirectory = dirname;
