@@ -14,7 +14,7 @@ pub struct Args {
     output_args: crate::cli::OutputArgs,
 
     #[clap(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -24,12 +24,20 @@ pub enum Command {
         /// If set, show verbose dial details.
         #[clap(long, short = 'd')]
         details: bool,
+
+        /// Configures how the dials are displayed.
+        #[clap(long, short = 'o', default_value_t = OutputMode::Text, value_enum)]
+        output: OutputMode,
     },
 
     /// Get detailed status information about a dial.
     Status {
         #[clap(flatten)]
         dial: DialSelection,
+
+        /// Configures how the dial's status is displayed.
+        #[clap(long, short = 'o', default_value_t = OutputMode::Text, value_enum)]
+        output: OutputMode,
     },
 
     /// Set a dial's value, image file, backlight, or easing config.
@@ -91,6 +99,13 @@ pub struct DialSelection {
     index: Option<usize>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputMode {
+    Text,
+    Json,
+    Ascii,
+}
+
 impl Args {
     pub async fn run(self) -> miette::Result<()> {
         let Self {
@@ -102,18 +117,21 @@ impl Args {
         let client = client_args
             .into_client()
             .context("failed to build client")?;
-        command.run(&client).await
+        match command {
+            Some(command) => command.run(&client).await,
+            None => list_dials(&client, false, OutputMode::Text).await,
+        }
     }
 }
 
 impl Command {
     pub async fn run(self, client: &vu_api::Client) -> miette::Result<()> {
         match self {
-            Command::List { details } => {
-                list_dials(client, details).await?;
+            Command::List { details, output } => {
+                list_dials(client, details, output).await?;
             }
 
-            Command::Status { dial } => {
+            Command::Status { dial, output } => {
                 let status = match dial.select_dial(client).await? {
                     (_, Some(status)) => status,
                     (d, None) => d
@@ -121,7 +139,7 @@ impl Command {
                         .await
                         .with_context(|| format!("failed to get status for dial {dial}"))?,
                 };
-                print_status(status);
+                output.print_status(&status)?;
             }
 
             Command::Set { dial, values } => values.run(client, &dial).await?,
@@ -223,74 +241,139 @@ impl SetValues {
     }
 }
 
-async fn list_dials(client: &vu_api::client::Client, details: bool) -> miette::Result<()> {
-    let dials = client.list_dials().await?;
-    fn print_info(dial: DialInfo) {
-        println!("DIAL: {}", dial.uid);
-        println!("├─name: {}", dial.dial_name);
-        println!("├─value: {}", dial.value);
-        print_backlight(dial.backlight);
-        println!("└─image: {}\n", dial.image_file);
+struct TextTheme {
+    branch: &'static str,
+    trunk: &'static str,
+    leaf: &'static str,
+}
+
+const UNICODE_THEME: TextTheme = TextTheme {
+    branch: "├─",
+    trunk: "│",
+    leaf: "└─",
+};
+
+const ASCII_THEME: TextTheme = TextTheme {
+    branch: "+-",
+    trunk: "|",
+    leaf: "+-",
+};
+
+impl OutputMode {
+    pub fn print_dial(&self, info: &DialInfo) -> miette::Result<()> {
+        fn print_info(dial: &DialInfo, theme: &TextTheme) {
+            let TextTheme { branch, leaf, .. } = theme;
+            println!("DIAL: {}", dial.uid);
+            println!("{branch}name: {}", dial.dial_name);
+            println!("{branch}value: {}", dial.value);
+            print_backlight(&dial.backlight, theme);
+            println!("{leaf}image: {}\n", dial.image_file);
+        }
+
+        match self {
+            OutputMode::Ascii => print_info(info, &ASCII_THEME),
+            OutputMode::Text => print_info(info, &UNICODE_THEME),
+            OutputMode::Json => {
+                let json = serde_json::to_string_pretty(info).into_diagnostic()?;
+                println!("{json}");
+            }
+        }
+
+        Ok(())
     }
 
+    pub fn print_status(&self, status: &dial::Status) -> miette::Result<()> {
+        fn print_status(dial: &dial::Status, theme: &TextTheme) {
+            let TextTheme {
+                branch,
+                trunk,
+                leaf,
+            } = theme;
+            println!("DIAL: {}", dial.uid);
+            println!("{branch}name: {}", dial.dial_name);
+            println!("{branch}value: {}", dial.value);
+            println!("{branch}index: {}", dial.index);
+            println!("{branch}rgbw: {:?}", dial.rgbw);
+            println!("{branch}image file: {}", dial.image_file);
+            let dial::Easing {
+                dial_step,
+                dial_period,
+                backlight_step,
+                backlight_period,
+            } = dial.easing;
+            println!("{branch}DIAL EASING:");
+            println!("{trunk} {branch}dial step: {dial_step}");
+            println!("{trunk} {leaf}dial period: {dial_period}");
+            println!("{branch}BACKLIGHT EASING:");
+            println!("{trunk} {branch}backlight step: {backlight_step}");
+            println!("{trunk} {leaf}backlight period: {backlight_period}");
+            println!("{branch}VERSION:");
+            println!("{trunk} {branch}firmware hash: {}", dial.fw_hash);
+            println!("{trunk} {branch}firmware version: {}", dial.fw_version);
+            println!("{trunk} {branch}hardware version: {}", dial.hw_version);
+            println!("{trunk} {leaf}protocol version: {}", dial.protocol_version);
+            print_backlight(&dial.backlight, theme);
+            println!("{branch}STATUS:");
+            println!("{trunk} {branch}value_changed: {}", dial.value_changed);
+            println!(
+                "{trunk} {branch}backlight_changed: {}",
+                dial.backlight_changed
+            );
+            println!("{trunk} {leaf}image_changed: {}", dial.image_changed);
+            println!("{leaf}update deadline: {}\n", dial.update_deadline);
+        }
+
+        match self {
+            OutputMode::Ascii => print_status(status, &ASCII_THEME),
+            OutputMode::Text => print_status(status, &UNICODE_THEME),
+            OutputMode::Json => {
+                let json = serde_json::to_string_pretty(status).into_diagnostic()?;
+                println!("{json}");
+            }
+        }
+
+        Ok(())
+    }
+}
+async fn list_dials(
+    client: &vu_api::client::Client,
+    details: bool,
+    output: OutputMode,
+) -> miette::Result<()> {
+    let dials = client.list_dials().await?;
     if details {
         for (dial, info) in dials {
             match dial.status().await {
-                Ok(status) => print_status(status),
+                Ok(status) => output.print_status(&status)?,
                 Err(error) => {
-                    eprintln!(
-                        "failed to get detailed status for dial {}: {error}",
+                    tracing::warn!(
+                        %error,
+                        "failed to get detailed status for dial {}",
                         info.uid
                     );
-
-                    println!("{dial:#?}\n");
+                    output.print_dial(&info)?;
                 }
             }
         }
     } else {
         for (_, info) in dials {
-            print_info(info)
+            output.print_dial(&info)?;
         }
     }
 
     Ok(())
 }
 
-fn print_status(dial: dial::Status) {
-    println!("DIAL: {}", dial.uid);
-    println!("├─name: {}", dial.dial_name);
-    println!("├─value: {}", dial.value);
-    println!("├─index: {}", dial.index);
-    println!("├─rgbw: {:?}", dial.rgbw);
-    println!("├─image file: {}", dial.image_file);
-    let dial::Easing {
-        dial_step,
-        dial_period,
-        backlight_step,
-        backlight_period,
-    } = dial.easing;
-    println!("├─DIAL EASING:");
-    println!("│ ├─dial step: {dial_step}");
-    println!("│ └─dial period: {dial_period}");
-    println!("├─BACKLIGHT EASING:");
-    println!("│ ├─backlight step: {backlight_step}");
-    println!("│ └─backlight period: {backlight_period}");
-    println!("├─VERSION:");
-    println!("│ ├─firmware hash: {}", dial.fw_hash);
-    println!("│ ├─firmware version: {}", dial.fw_version);
-    println!("│ ├─hardware version: {}", dial.hw_version);
-    println!("│ └─protocol version: {}", dial.protocol_version);
-    print_backlight(dial.backlight);
-    println!("├─STATUS:");
-    println!("│ ├─value_changed: {}", dial.value_changed);
-    println!("│ ├─backlight_changed: {}", dial.backlight_changed);
-    println!("│ └─image_changed: {}", dial.image_changed);
-    println!("└─update deadline: {}\n", dial.update_deadline);
-}
-
-fn print_backlight(dial::Backlight { red, green, blue }: dial::Backlight) {
-    println!("├─BACKLIGHT:");
-    println!("│ ├─red: {red}");
-    println!("│ ├─green: {green}");
-    println!("│ └─blue: {blue}");
+fn print_backlight(
+    dial::Backlight { red, green, blue }: &dial::Backlight,
+    TextTheme {
+        branch,
+        trunk,
+        leaf,
+    }: &TextTheme,
+) {
+    println!("{branch}BACKLIGHT:");
+    println!("{trunk} {branch}red: {red}");
+    println!("{trunk} {branch}green: {green}");
+    println!("{trunk} {leaf}blue: {blue}");
 }
