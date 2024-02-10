@@ -199,7 +199,12 @@ impl fmt::Display for DialSelection {
 }
 
 impl SetValues {
-    #[tracing::instrument(name = "set", level = tracing::Level::INFO, skip(self, client))]
+    #[tracing::instrument(
+        name = "set",
+        level = tracing::Level::INFO,
+        skip_all,
+        fields(dial = %selection),
+    )]
     async fn run(self, client: &vu_api::Client, selection: &DialSelection) -> miette::Result<()> {
         let (dial, status) = selection.select_dial(client).await?;
         tracing::debug!(%dial, "Found dial for selection");
@@ -260,14 +265,7 @@ impl SetValues {
             errors.push(miette::miette!("setting images is not yet implemented"));
         }
 
-        if !errors.is_empty() {
-            Err(MultiError {
-                msg: "could not set all requested configurations",
-                errors,
-            })?;
-        }
-
-        Ok(())
+        MultiError::from_vec(errors, "failed to set some dial configurations")
     }
 }
 
@@ -406,13 +404,7 @@ async fn list_dials(
         }
     }
 
-    if !errors.is_empty() {
-        Err(MultiError {
-            msg: "could not get info for all dials",
-            errors,
-        })?;
-    }
-    Ok(())
+    MultiError::from_vec(errors, "could not get info for all dials")
 }
 
 fn print_backlight(
@@ -427,4 +419,18 @@ fn print_backlight(
     println!("{trunk} {branch}red: {red}");
     println!("{trunk} {branch}green: {green}");
     println!("{trunk} {leaf}blue: {blue}");
+}
+
+impl MultiError {
+    fn from_vec(errors: Vec<miette::Report>, msg: &'static str) -> miette::Result<()> {
+        if errors.is_empty() {
+            return Ok(());
+        }
+
+        if errors.len() == 1 {
+            return Err(errors.into_iter().next().unwrap());
+        }
+
+        Err(MultiError { msg, errors }.into())
+    }
 }
