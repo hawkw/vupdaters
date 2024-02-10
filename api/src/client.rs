@@ -2,6 +2,7 @@ use crate::{
     api,
     dial::{self, Id, Value},
 };
+use core::fmt;
 pub use reqwest::ClientBuilder;
 use reqwest::{header::HeaderValue, IntoUrl, Method, Url};
 use std::sync::Arc;
@@ -171,6 +172,12 @@ impl Dial {
         }
         let rsp = req.multipart(multipart).send().await?;
         response_json(rsp).await
+    }
+}
+
+impl fmt::Display for Dial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.uid, f)
     }
 }
 

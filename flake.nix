@@ -24,6 +24,8 @@
             function pkgs);
 
       src = ./.;
+
+      defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
     in
     {
       packages = forAllSystems (pkgs: with pkgs; let
@@ -55,6 +57,7 @@
       });
       devShells = forAllSystems (pkgs: with pkgs; {
         default = mkShell {
+          VU_DIALS_API_KEY = defaultApiKey;
           buildInputs = [ self.packages.${system}.default.buildInputs ];
         };
       });
@@ -74,7 +77,6 @@
       nixosModules.default = { config, lib, pkgs, ... }: with lib; let
         cfg = config.services.vu-dials.vupdated;
         dirname = "vupdated";
-        defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
         serverUnit = "VU-Server.service";
 
         configFormat = pkgs.formats.toml { };

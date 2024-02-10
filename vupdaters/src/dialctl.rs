@@ -1,6 +1,7 @@
 use camino::Utf8PathBuf;
 use miette::{Context, IntoDiagnostic};
-use vu_api::{api::DialInfo, dial};
+use std::fmt;
+use vu_api::{api::DialInfo, dial, Dial};
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about)]
@@ -19,50 +20,75 @@ pub struct Args {
 #[derive(Debug, clap::Subcommand)]
 pub enum Command {
     /// List all dials.
-    Dials {
+    List {
         /// If set, show verbose dial details.
         #[clap(long, short = 'd')]
         details: bool,
     },
 
-    /// Commands related to a specific dial.
-    Dial {
-        /// The dial's UID.
-        uid: dial::Id,
-        #[clap(subcommand)]
-        command: DialCommand,
+    /// Get detailed status information about a dial.
+    Status {
+        #[clap(flatten)]
+        dial: DialSelection,
+    },
+
+    /// Set a dial's value, image file, backlight, or easing config.
+    ///
+    /// At least one of `--value`, `--image`, `--red`, `--green`, or `--blue`
+    /// must be provided.
+    Set {
+        #[clap(flatten)]
+        dial: DialSelection,
+
+        #[clap(flatten)]
+        values: SetValues,
     },
 }
 
-#[derive(Debug, clap::Subcommand)]
-pub enum DialCommand {
-    /// Get detailed status information about this dial.
-    Status,
-    /// Set a dial's value.
-    Set {
-        /// The new value to set the dial to.
-        value: vu_api::dial::Value,
-    },
-    /// Set the dial's background image.
-    SetImage {
-        /// Path to the new image file.
-        #[clap(value_hint = clap::ValueHint::FilePath)]
-        path: Utf8PathBuf,
-    },
-    /// Sets the dial's backlight to the provided RGB values.
-    SetBacklight {
-        /// A red value in the range 0-100.
-        #[clap(long, short = 'r')]
-        red: dial::Value,
+#[derive(Debug, clap::Parser)]
+#[command(next_help_heading = "Setting Values")]
+#[group(id = "set", required = true, multiple = true)]
+pub struct SetValues {
+    /// Set the dial's needle to the provided value.
+    ///
+    /// Values must be between 0 and 100.
+    #[clap(long, short = 'v')]
+    value: Option<dial::Value>,
 
-        /// A red value in the range 0-100.
-        #[clap(long, short = 'g')]
-        green: dial::Value,
+    /// Set the dial's background image to the provided image file.
+    #[clap(long, value_hint = clap::ValueHint::FilePath)]
+    image: Option<Utf8PathBuf>,
 
-        /// A red value in the range 0-100.
-        #[clap(long, short = 'b')]
-        blue: dial::Value,
-    },
+    /// Set the red value of the dial's backlight to the provided value.
+    ///
+    /// Values must be between 0 and 100.
+    #[clap(long, short = 'r')]
+    red: Option<dial::Value>,
+
+    /// Set the green value of the dial's backlight to the provided value.
+    ///
+    /// Values must be between 0 and 100.
+    #[clap(long, short = 'g')]
+    green: Option<dial::Value>,
+
+    /// Set the blue value of the dial's backlight to the provided value.
+    ///
+    /// Values must be between 0 and 100.
+    #[clap(long, short = 'b')]
+    blue: Option<dial::Value>,
+}
+
+#[derive(Debug, clap::Parser)]
+#[command(next_help_heading = "Dial Selection")]
+#[group(id = "selection", required = true, multiple = false)]
+pub struct DialSelection {
+    /// The dial's UID.
+    #[clap(long = "dial", short = 'd')]
+    uid: Option<dial::Id>,
+
+    /// The dial's index.
+    #[clap(long, short = 'i')]
+    index: Option<usize>,
 }
 
 impl Args {
@@ -83,73 +109,116 @@ impl Args {
 impl Command {
     pub async fn run(self, client: &vu_api::Client) -> miette::Result<()> {
         match self {
-            Command::Dials { details } => {
+            Command::List { details } => {
                 list_dials(client, details).await?;
             }
 
-            Command::Dial {
-                uid,
-                command: DialCommand::Status,
-            } => {
-                let status = client
-                    .dial(uid.clone())
-                    .into_diagnostic()?
-                    .status()
-                    .await
-                    .with_context(|| format!("failed to get status for dial {uid}"))?;
+            Command::Status { dial } => {
+                let status = match dial.select_dial(client).await? {
+                    (_, Some(status)) => status,
+                    (d, None) => d
+                        .status()
+                        .await
+                        .with_context(|| format!("failed to get status for dial {dial}"))?,
+                };
                 print_status(status);
             }
 
-            Command::Dial { .. } => todo!(),
+            Command::Set { dial, values } => values.run(client, &dial).await?,
         };
         Ok(())
     }
 }
 
-impl DialCommand {
-    pub async fn run(self, client: &vu_api::Client, uid: dial::Id) -> miette::Result<()> {
-        let dial = client
-            .dial(uid.clone())
-            .into_diagnostic()
-            .with_context(|| format!("invalid dial UID {uid}"))?;
-        match self {
-            DialCommand::Status => {
-                let status = dial
-                    .status()
-                    .await
-                    .with_context(|| format!("failed to get status for dial {uid}"))?;
-                print_status(status);
-            }
-
-            DialCommand::Set { value } => {
-                client
-                    .dial(uid.clone())
-                    .into_diagnostic()?
-                    .set(value)
-                    .await
-                    .with_context(|| format!("failed to set value for dial {uid}"))?;
-            }
-
-            DialCommand::SetImage { path } => {
-                // client
-                //     .dial(uid.clone())
-                //     .into_diagnostic()?
-                //     .set_image(path,)
-                //     .await
-                //     .with_context(|| format!("failed to set image for dial
-                //     {uid}"))?;
-                todo!("eliza: {path:?}")
-            }
-
-            DialCommand::SetBacklight { red, green, blue } => {
-                client
-                    .dial(uid.clone())
-                    .into_diagnostic()?
-                    .set_backlight(dial::Backlight { red, green, blue })
-                    .await
-                    .with_context(|| format!("failed to set backlight for dial {uid}"))?;
+impl DialSelection {
+    async fn select_dial(
+        &self,
+        client: &vu_api::Client,
+    ) -> miette::Result<(Dial, Option<dial::Status>)> {
+        match self.uid {
+            Some(ref uid) => client
+                .dial(uid.clone())
+                .into_diagnostic()
+                .map(|dial| (dial, None)),
+            None => {
+                let index = self
+                    .index
+                    .expect("if no UID is provided, an index must be provided");
+                let dials = client.list_dials().await?;
+                let mut found_dial = None;
+                for (dial, _) in dials {
+                    let status = dial
+                        .status()
+                        .await
+                        .with_context(|| format!("failed to get status for dial {}", dial.id()))?;
+                    if status.index == index {
+                        found_dial = Some((dial, Some(status)));
+                        break;
+                    }
+                }
+                found_dial.ok_or_else(|| miette::miette!("no dial found with index {index}"))
             }
         }
+    }
+}
+
+impl fmt::Display for DialSelection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.uid {
+            Some(ref uid) => write!(f, "ID {}", uid),
+            None => write!(f, "index {}", self.index.expect("index must be provided")),
+        }
+    }
+}
+
+impl SetValues {
+    #[tracing::instrument(name = "set", level = tracing::Level::INFO, skip(self, client))]
+    async fn run(self, client: &vu_api::Client, selection: &DialSelection) -> miette::Result<()> {
+        let (dial, status) = selection.select_dial(client).await?;
+        tracing::debug!(%dial, "Found dial for selection");
+
+        if let Some(value) = self.value {
+            tracing::info!(%dial, %value, "Setting value...");
+            dial.set(value)
+                .await
+                .with_context(|| format!("failed to set value for dial {selection} to {value}"))?;
+        }
+
+        if self.red.is_some() || self.green.is_some() || self.blue.is_some() {
+            let mut backlight = match status {
+                Some(status) => status,
+                None => dial
+                    .status()
+                    .await
+                    .with_context(|| format!("failed to get status for dial {selection}"))?,
+            }
+            .backlight;
+            if let Some(red) = self.red {
+                tracing::info!(%red, "Setting backlight...");
+                backlight.red = red;
+            }
+
+            if let Some(green) = self.green {
+                tracing::info!(%green, "Setting backlight...");
+                backlight.green = green;
+            }
+
+            if let Some(blue) = self.blue {
+                tracing::info!(%blue, "Setting backlight...");
+                backlight.blue = blue;
+            }
+
+            dial.set_backlight(backlight.clone())
+                .await
+                .with_context(|| {
+                    format!("failed to set backlight for dial {selection} to {backlight:?}")
+                })?;
+        }
+
+        if let Some(image) = self.image {
+            tracing::warn!("Not setting image to {image}; not yet implemented.");
+        }
+
         Ok(())
     }
 }

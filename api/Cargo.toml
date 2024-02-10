@@ -11,7 +11,6 @@ license = { workspace = true }
 client = ["reqwest", "url"]
 
 [dependencies]
-clap = { workspace = true, default-features = false, optional = true, features = ["derive", "env"] }
 http = { workspace = true }
 reqwest = { workspace = true, optional = true,  default-features = false, features = ["json", "multipart"] }
 url = { workspace = true, optional = true }
