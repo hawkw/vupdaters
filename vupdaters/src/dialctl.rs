@@ -106,6 +106,15 @@ pub enum OutputMode {
     Ascii,
 }
 
+#[derive(miette::Diagnostic, Debug, thiserror::Error)]
+#[error("{}", .msg)]
+#[diagnostic()]
+struct MultiError {
+    msg: &'static str,
+    #[related]
+    errors: Vec<miette::Report>,
+}
+
 impl Args {
     pub async fn run(self) -> miette::Result<()> {
         let Self {
@@ -194,47 +203,68 @@ impl SetValues {
     async fn run(self, client: &vu_api::Client, selection: &DialSelection) -> miette::Result<()> {
         let (dial, status) = selection.select_dial(client).await?;
         tracing::debug!(%dial, "Found dial for selection");
-
+        let mut errors = Vec::new();
         if let Some(value) = self.value {
             tracing::info!(%dial, %value, "Setting value...");
-            dial.set(value)
+            if let Err(e) = dial
+                .set(value)
                 .await
-                .with_context(|| format!("failed to set value for dial {selection} to {value}"))?;
+                .with_context(|| format!("failed to set value to {value}"))
+            {
+                errors.push(e);
+            }
         }
 
         if self.red.is_some() || self.green.is_some() || self.blue.is_some() {
-            let mut backlight = match status {
-                Some(status) => status,
+            let backlight = match status {
+                Some(status) => Ok(status.backlight),
                 None => dial
                     .status()
                     .await
-                    .with_context(|| format!("failed to get status for dial {selection}"))?,
-            }
-            .backlight;
-            if let Some(red) = self.red {
-                tracing::info!(%red, "Setting backlight...");
-                backlight.red = red;
-            }
+                    .with_context(|| format!("failed to get status for dial {selection}"))
+                    .map(|status| status.backlight),
+            };
+            match backlight {
+                Ok(mut backlight) => {
+                    if let Some(red) = self.red {
+                        tracing::info!(%red, "Setting backlight...");
+                        backlight.red = red;
+                    }
 
-            if let Some(green) = self.green {
-                tracing::info!(%green, "Setting backlight...");
-                backlight.green = green;
-            }
+                    if let Some(green) = self.green {
+                        tracing::info!(%green, "Setting backlight...");
+                        backlight.green = green;
+                    }
 
-            if let Some(blue) = self.blue {
-                tracing::info!(%blue, "Setting backlight...");
-                backlight.blue = blue;
-            }
+                    if let Some(blue) = self.blue {
+                        tracing::info!(%blue, "Setting backlight...");
+                        backlight.blue = blue;
+                    }
 
-            dial.set_backlight(backlight.clone())
-                .await
-                .with_context(|| {
-                    format!("failed to set backlight for dial {selection} to {backlight:?}")
-                })?;
+                    if let Err(e) = dial
+                        .set_backlight(backlight.clone())
+                        .await
+                        .with_context(|| {
+                            format!("failed to set backlight for dial {selection} to {backlight:?}")
+                        })
+                    {
+                        errors.push(e);
+                    }
+                }
+                Err(e) => errors.push(e.context("failed to set backlight")),
+            }
         }
 
         if let Some(image) = self.image {
             tracing::warn!("Not setting image to {image}; not yet implemented.");
+            errors.push(miette::miette!("setting images is not yet implemented"));
+        }
+
+        if !errors.is_empty() {
+            Err(MultiError {
+                msg: "could not set all requested configurations",
+                errors,
+            })?;
         }
 
         Ok(())
@@ -341,26 +371,47 @@ async fn list_dials(
     output: OutputMode,
 ) -> miette::Result<()> {
     let dials = client.list_dials().await?;
+    let mut errors = Vec::new();
     if details {
         for (dial, info) in dials {
-            match dial.status().await {
-                Ok(status) => output.print_status(&status)?,
+            match dial
+                .status()
+                .await
+                .with_context(|| format!("failed to get detailed status for {dial}"))
+            {
+                Ok(status) => {
+                    if let Err(e) = output.print_status(&status) {
+                        errors
+                            .push(e.context(format!("failed to print detailed status for {dial}")));
+                    }
+                }
                 Err(error) => {
                     tracing::warn!(
                         %error,
-                        "failed to get detailed status for dial {}",
-                        info.uid
                     );
-                    output.print_dial(&info)?;
+                    errors.push(error);
+
+                    if let Err(e) = output.print_dial(&info) {
+                        errors
+                            .push(e.context(format!("failed to print detailed status for {dial}")));
+                    }
                 }
             }
         }
     } else {
-        for (_, info) in dials {
-            output.print_dial(&info)?;
+        for (dial, info) in dials {
+            if let Err(e) = output.print_dial(&info) {
+                errors.push(e.context(format!("failed to print dial {dial}")));
+            }
         }
     }
 
+    if !errors.is_empty() {
+        Err(MultiError {
+            msg: "could not get info for all dials",
+            errors,
+        })?;
+    }
     Ok(())
 }
 
