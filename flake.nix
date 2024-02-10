@@ -151,6 +151,7 @@
         };
 
         config = mkIf cfg.enable {
+          environment.etc."${dirname}/config.toml".source = configFile;
           systemd.services.vupdated = {
             description = "Streacom VU-1 dials update daemon";
             wantedBy = [ "multi-user.target" ];
@@ -158,7 +159,7 @@
             requisite = [ serverUnit ];
             script = ''
               vupdated \
-                --config ${configFile} \
+                --config /etc/${dirname}/config.toml \
                 --key ${cfg.client.apiKey} \
                 --server http://${cfg.client.hostname}:${toString cfg.client.port}
             '';

@@ -52,3 +52,46 @@ pub enum HubCommand {
     DialBtlRestartFwupload = 0xFC,
     DialBtlReadLastStatus = 0xFD,
 }
+
+const COMMAND_SUFFIX: &[u8; 2] = b"\r\n";
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum HubDataType {
+    None = 0x01,
+    SingleValue = 0x02,
+    MultipleValue = 0x03,
+    KeyValuePair = 0x04,
+    StatusCode = 0x05,
+}
+
+pub struct CommandHeader {}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u16)]
+pub enum HubStatusCode {
+    Ok = 0x0000,
+    Fail = 0x0001,
+    Busy = 0x0002,
+    Timeout = 0x0003,
+    BadData = 0x0004,
+    ProtocolError = 0x0005,
+    NoMemory = 0x0006,
+    InvalidArgument = 0x0007,
+    BadAddress = 0x0008,
+    Forbidden = 0x0009,
+    AlreadyExists = 0x000B,
+    Unsupported = 0x000C,
+    NotImplemented = 0x000D,
+    MalformedPackage = 0x000E,
+    RecursiveCall = 0x0010,
+    DataMismatch = 0x0011,
+    DeviceOffline = 0x0012,
+    ModuleNotInit = 0x0013,
+    I2cError = 0x0014,
+    UsartError = 0x0015,
+    SpiError = 0x0016,
+    BootloaderNoDevice = 0xE001,
+    BootloaderInvalidState = 0xE002,
+    BootloaderInvalidRequest = 0xE003,
+}
