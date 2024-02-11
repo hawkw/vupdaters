@@ -23,11 +23,17 @@ pub struct DialConfig {
 #[serde(rename_all = "kebab-case")]
 #[clap(rename_all = "kebab-case")]
 pub enum Metric {
+    /// Display CPU load as a percentage.
     CpuLoad,
+    /// Display memory usage, as a percentage of total memory.
     Mem,
+    /// Display disk usage as a percentage of total disk space.
     Disk,
+    /// Display CPU temperature.
     CpuTemp,
+    /// Display swap usage, as a percentage of total swap space.
     Swap,
+    /// Display the current remaining battery percentage.
     Battery,
 }
 
@@ -39,6 +45,7 @@ pub enum Metric {
     about = "Daemon for updating VU-1 dials"
 )]
 pub struct Args {
+    /// Path to the config file.
     #[clap(
         long = "config",
         short = 'c',
@@ -60,7 +67,13 @@ pub struct Args {
 
 #[derive(Debug, clap::Subcommand)]
 enum Subcommand {
+    /// Generate a new config file with the given metrics.
     GenConfig {
+        /// The list of requested metrics to include in the config file.
+        ///
+        /// If more metrics are requested than the number of dials connected to
+        /// the system, only the first N metrics will be included in the config,
+        /// where N is the number of dials discovered.
         #[arg(
             num_args = 1..,
             value_enum,
@@ -68,7 +81,8 @@ enum Subcommand {
                 Metric::CpuLoad,
                 Metric::Mem,
                 Metric::CpuTemp,
-                Metric::Swap],
+                Metric::Swap,
+            ],
         )]
         metrics: Vec<Metric>,
     },

@@ -3,14 +3,13 @@ use miette::{Context, IntoDiagnostic};
 use std::fmt;
 use vu_api::{api::DialInfo, dial, Dial};
 
+/// A command-line tool for controlling Streacom VU-1 dials.
+///
+/// Use `dialctl list` to list all dials connected to the system, `dialctl
+/// status` to get detailed status information about a dial, or `dialctl set` to
+/// set a dial's value, backlight configuration, and background image.
 #[derive(Debug, clap::Parser)]
-#[command(
-    name = "dialctl",
-    author,
-    version,
-    about = "Command-line tool for controlling VU-1 dials.",
-    propagate_version = true
-)]
+#[command(name = "dialctl", author, version, propagate_version = true)]
 pub struct Args {
     #[clap(flatten)]
     client_args: crate::cli::ClientArgs,
@@ -36,6 +35,9 @@ pub enum Command {
     },
 
     /// Get detailed status information about a dial.
+    ///
+    /// The dial to look up can be selected either by its index (using `--index
+    /// <index>`) or by its UID (using `--dial <uid>`).
     Status {
         #[clap(flatten)]
         dial: DialSelection,
@@ -95,13 +97,17 @@ pub struct SetValues {
 #[command(next_help_heading = "Dial Selection")]
 #[group(id = "selection", required = true, multiple = false)]
 pub struct DialSelection {
-    /// The dial's UID.
+    /// Select a dial by its UID.
     #[clap(long = "dial", short = 'd')]
     uid: Option<dial::Id>,
 
-    /// The dial's index.
+    /// Select a dial by its numeric index.
     #[clap(long, short = 'i')]
     index: Option<usize>,
+
+    /// Select a dial by its user-assigned name.
+    #[clap(long, short = 'n')]
+    name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
