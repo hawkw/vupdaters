@@ -64,7 +64,7 @@ fn render_command(
     let mut main_docs = fs::read_to_string(&cmd_in)
         .into_diagnostic()
         .with_context(|| format!("failed to read {cmd_in}"))?;
-    let mut help_template = "\
+    let help_template = "\
         {about}\n\n\
         ```\n\
         {usage}\n\
@@ -72,14 +72,30 @@ fn render_command(
     "
     .to_owned();
 
-    if cmd.has_subcommands() {
-        help_template.push_str("### subcommands\n\n```\n{subcommands}\n```\n");
-    }
-
     let mut cmd = cmd.help_template(help_template).max_term_width(80);
 
     let cmd_docs = cmd.render_long_help();
     write!(&mut main_docs, "\n\n## command-line usage\n\n{cmd_docs}\n").into_diagnostic()?;
+
+    if cmd.has_subcommands() {
+        main_docs.push_str("\n### subcommands\n\n");
+        for cmd in cmd.get_subcommands() {
+            let subcmd_name = cmd.get_name();
+            if subcmd_name != "help" {
+                write!(
+                    &mut main_docs,
+                    " - **[{subcmd_name}]({name}/{subcmd_name}.html)**"
+                )
+                .into_diagnostic()?;
+            } else {
+                write!(&mut main_docs, " - **{subcmd_name}**").into_diagnostic()?;
+            }
+            if let Some(about) = cmd.get_about() {
+                write!(&mut main_docs, ": {about}", about = about).into_diagnostic()?;
+            }
+            main_docs.push('\n');
+        }
+    }
 
     if cmd.get_positionals().count() > 0 {
         main_docs.push_str("\n### arguments\n\n");
