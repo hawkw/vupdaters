@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "api",
+    "docs",
     "protocol",
     "vupdaters",
 ]
@@ -14,6 +15,7 @@ repository = "https://github.com/hawkw/vupdaters"
 
 [workspace.dependencies]
 clap = { version = "4" }
+cargo_metadata = { version = "0.18" }
 camino = "1"
 directories = { version = "5.0.1"}
 http = { version = "1" }

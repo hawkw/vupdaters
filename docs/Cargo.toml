@@ -1,0 +1,20 @@
+[package]
+name = "vupdaters-docs"
+version = "0.1.0"
+description = "Tools for updating VU-Dials."
+edition = { workspace = true }
+repository = { workspace = true }
+authors = ["Eliza Weisman <eliza@elizas.website>"]
+license = "MIT"
+publish = false
+
+# See more keys and their definitions at
+# https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+
+[build-dependencies]
+clap = { workspace = true, features = ["std", "derive", "env"] }
+vupdaters = { path = "../vupdaters" }
+miette = { workspace = true }
+camino = { workspace = true }
+cargo_metadata = { workspace = true }

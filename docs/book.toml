@@ -1,0 +1,6 @@
+[book]
+authors = ["Eliza Weisman"]
+language = "en"
+multilingual = false
+src = "rendered"
+title = "vupdaters"

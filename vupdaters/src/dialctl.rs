@@ -4,8 +4,13 @@ use std::fmt;
 use vu_api::{api::DialInfo, dial, Dial};
 
 #[derive(Debug, clap::Parser)]
-#[command(author, version, about)]
-#[command(propagate_version = true)]
+#[command(
+    name = "dialctl",
+    author,
+    version,
+    about = "Command-line tool for controlling VU-1 dials.",
+    propagate_version = true
+)]
 pub struct Args {
     #[clap(flatten)]
     client_args: crate::cli::ClientArgs,

@@ -13,7 +13,7 @@ license = "MIT"
 
 [dependencies]
 camino = { workspace = true }
-clap = { workspace = true, features = ["std", "derive", "env"] }
+clap = { workspace = true, features = ["std", "derive", "env", "wrap_help"] }
 directories = { workspace = true }
 http = { workspace = true }
 miette = { workspace = true, features = ["fancy"] }

@@ -7,9 +7,13 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    oranda = {
+      url = "github:axodotdev/oranda";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, rust-overlay }:
+  outputs = { self, nixpkgs, rust-overlay, oranda }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       overlays = [ (import rust-overlay) ];
@@ -58,7 +62,10 @@
       devShells = forAllSystems (pkgs: with pkgs; {
         default = mkShell {
           VU_DIALS_API_KEY = defaultApiKey;
-          buildInputs = [ self.packages.${system}.default.buildInputs ];
+          buildInputs = [
+            self.packages.${system}.default.buildInputs
+            oranda.packages.${system}.default
+          ];
         };
       });
       apps = forAllSystems

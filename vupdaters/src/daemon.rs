@@ -36,9 +36,8 @@ pub enum Metric {
     name = "vupdated",
     author,
     version,
-    about = "Daemon for updating VU Dials"
+    about = "Daemon for updating VU-1 dials"
 )]
-#[command(propagate_version = true)]
 pub struct Args {
     #[clap(
         long = "config",
