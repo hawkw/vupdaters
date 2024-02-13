@@ -173,30 +173,34 @@ impl DialSelection {
         &self,
         client: &vu_api::Client,
     ) -> miette::Result<(Dial, Option<dial::Status>)> {
-        match self.uid {
-            Some(ref uid) => client
+        if let Some(ref uid) = self.uid {
+            return client
                 .dial(uid.clone())
                 .into_diagnostic()
-                .map(|dial| (dial, None)),
-            None => {
-                let index = self
-                    .index
-                    .expect("if no UID is provided, an index must be provided");
-                let dials = client.list_dials().await?;
-                let mut found_dial = None;
-                for (dial, _) in dials {
-                    let status = dial
-                        .status()
-                        .await
-                        .with_context(|| format!("failed to get status for dial {}", dial.id()))?;
-                    if status.index == index {
-                        found_dial = Some((dial, Some(status)));
-                        break;
-                    }
-                }
-                found_dial.ok_or_else(|| miette::miette!("no dial found with index {index}"))
+                .map(|dial| (dial, None));
+        }
+        let dials = client.list_dials().await?;
+        let mut found_dial = None;
+        for (dial, _) in dials {
+            let status = dial
+                .status()
+                .await
+                .with_context(|| format!("failed to get status for dial {}", dial.id()))?;
+            let found = match (self.index, self.name.as_deref()) {
+                (Some(index), None) => status.index == index,
+                (None, Some(name)) => status.dial_name == name,
+                _ => unreachable!("selection must be validated to include either an index or name"),
+            };
+            if found {
+                found_dial = Some((dial, Some(status)));
+                break;
             }
         }
+        found_dial.ok_or_else(|| match (self.index, self.name.as_deref()) {
+            (Some(index), _) => miette::miette!("no dial found with index {index}"),
+            (None, Some(name)) => miette::miette!("no dial found with name {name}"),
+            _ => unreachable!("selection must be validated to include either an index or name"),
+        })
     }
 }
 
