@@ -10,11 +10,14 @@ license = "MIT"
 # See more keys and their definitions at
 # https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
+hotplug = ["tokio-udev", "zbus_systemd"]
 
 [dependencies]
+backoff = { workspace = true, features = ["futures", "tokio"] }
 camino = { workspace = true }
 clap = { workspace = true, features = ["std", "derive", "env", "wrap_help"] }
 directories = { workspace = true }
+futures = { workspace = true }
 http = { workspace = true }
 miette = { workspace = true, features = ["fancy"] }
 reqwest = { workspace = true, default-features = false, features = ["rustls-tls"] }
@@ -29,3 +32,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-journald = { workspace = true }
 vu-api = { path = "../api", features = ["client"] }
+owo-colors = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tokio-udev = { workspace = true, optional = true }
+zbus_systemd = { workspace = true, optional = true, features = ["systemd1"] }

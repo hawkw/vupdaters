@@ -58,6 +58,17 @@ pub enum Command {
         #[clap(flatten)]
         values: SetValues,
     },
+
+    /// Forcibly reload a dial's hardware info.
+    Reload {
+        /// The UID of the dial to reload.
+        #[clap(long = "dial", short = 'd')]
+        dial: dial::Id,
+
+        /// Configures how the dial's status is displayed.
+        #[clap(long, short = 'o', default_value_t = OutputMode::Text, value_enum)]
+        output: OutputMode,
+    },
 }
 
 #[derive(Debug, clap::Parser)]
@@ -163,6 +174,14 @@ impl Command {
             }
 
             Command::Set { dial, values } => values.run(client, &dial).await?,
+            Command::Reload { dial, output } => {
+                let status = client
+                    .dial(dial)
+                    .into_diagnostic()?
+                    .reload_hw_info()
+                    .await?;
+                output.print_status(&status)?;
+            }
         };
         Ok(())
     }

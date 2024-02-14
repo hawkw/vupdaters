@@ -25,28 +25,38 @@ pub struct DialInfo {
 
 #[derive(Debug, Error, miette::Diagnostic)]
 pub enum Error {
-    #[error("failed to build request")]
+    #[error("failed to build request: {0}")]
+    #[diagnostic(code(vu_api::errors::client_error))]
     BuildRequest(#[from] http::Error),
 
     #[cfg(feature = "client")]
-    #[error("invalid URL: {0}")]
+    #[error(transparent)]
+    #[diagnostic(code(vu_api::errors::client_error))]
     BuildUrl(#[from] url::ParseError),
 
     #[cfg(feature = "client")]
-    #[error("client request failed")]
+    #[error(transparent)]
+    #[diagnostic(code(vu_api::errors::client_error))]
     Request(#[from] reqwest::Error),
 
     #[cfg(feature = "client")]
     #[error("server returned {}: {}", .status, .message)]
+    #[diagnostic(code(vu_api::errors::server_error))]
     ServerHttp {
         status: reqwest::StatusCode,
         message: String,
     },
+
     #[error("VU-Server API error: {}", .0)]
+    #[diagnostic(code(vu_api::errors::server_error))]
     Server(String),
-    #[error("invalid backlight configuration: {0}")]
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     InvalidBacklight(#[from] dial::BacklightError),
-    #[error("{0}")]
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
     InvalidValue(#[from] dial::ValueError),
 }
 

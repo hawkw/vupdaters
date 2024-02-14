@@ -1,4 +1,5 @@
 use camino::{Utf8Path, Utf8PathBuf};
+use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
@@ -7,9 +8,34 @@ use vu_api::{
     dial::{Backlight, Value},
 };
 
+#[cfg(all(target_os = "linux", feature = "hotplug"))]
+mod hotplug;
+
+#[cfg(all(feature = "hotplug", not(target_os = "linux")))]
+compile_error!("hotplug feature is only supported on Linux");
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     dials: HashMap<String, DialConfig>,
+
+    #[serde(default)]
+    retries: RetryConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryConfig {
+    #[serde(default = "RetryConfig::default_initial_backoff")]
+    initial_backoff: Duration,
+    #[serde(default = "RetryConfig::default_jitter")]
+    jitter: f64,
+    #[serde(default = "RetryConfig::default_multiplier")]
+    multiplier: f64,
+
+    #[serde(default = "RetryConfig::default_max_backoff")]
+    max_backoff: Duration,
+
+    #[serde(default)]
+    max_elapsed_time: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +120,7 @@ struct DialManager {
     update_interval: std::time::Duration,
     dial: Dial,
     index: usize,
+    backoff: backoff::ExponentialBackoffBuilder,
 }
 
 fn default_config_path() -> Utf8PathBuf {
@@ -135,10 +162,7 @@ impl Args {
                         .into_diagnostic()
                         .with_context(|| format!("failed to parse config file {config_path}"))?
                 };
-                tokio::spawn(run_daemon(client, config))
-                    .await
-                    .into_diagnostic()
-                    .context("daemon main task panicked")??;
+                run_daemon(client, config).await?;
             }
         }
 
@@ -244,22 +268,11 @@ struct ImgFile {
     image: &'static [u8],
 }
 
-impl ImgFile {
-    async fn set_img(&self, dial: &Dial) -> miette::Result<()> {
-        use reqwest::multipart::Part;
-        let part = Part::bytes(self.image);
-        tracing::info!("setting image for {} to {}", dial.id(), self.name);
-        dial.set_image(self.name, part, false)
-            .await
-            .with_context(|| format!("failed to set image for {} to {}", dial.id(), self.name))?;
-        Ok(())
-    }
-}
-
 pub async fn run_daemon(client: Client, config: Config) -> miette::Result<()> {
     // TODO(eliza): handle sighup...
     let mut tasks = tokio::task::JoinSet::new();
     let mut dials_by_index = HashMap::new();
+
     for (dial, _) in client.list_dials().await? {
         let index = dial
             .status()
@@ -290,13 +303,16 @@ pub async fn run_daemon(client: Client, config: Config) -> miette::Result<()> {
             update_interval,
             dial,
             index,
+            backoff: config.retries.backoff_builder(),
         };
         tasks.spawn(dial_manager.run());
     }
 
+    #[cfg(all(target_os = "linux", feature = "hotplug"))]
+    tasks.spawn_local(hotplug::run());
+
     while let Some(next) = tasks.join_next().await {
-        next.into_diagnostic()?
-            .context("dial manager task panicked!")?;
+        next.into_diagnostic()?.context("a task failed!")?;
     }
     Ok(())
 }
@@ -316,17 +332,42 @@ impl DialManager {
             name,
             metric,
             update_interval,
+            backoff,
             ..
         } = self;
 
         tracing::info!("configuring dial...");
 
-        dial.set_name(&name).await?;
+        async fn retry<F>(
+            backoff: &backoff::ExponentialBackoffBuilder,
+            name: &'static str,
+            f: impl Fn() -> F,
+        ) -> Result<(), vu_api::api::Error>
+        where
+            F: std::future::Future<Output = Result<(), vu_api::api::Error>>,
+        {
+            backoff::future::retry_notify(
+                backoff.build(),
+                || f().map_err(backoff_error),
+                |error, retry_after| {
+                    tracing::warn!(%error, ?retry_after, "failed to {name}, retrying...");
+                },
+            )
+            .await
+        }
+
+        retry(&backoff, "set dial name", || dial.set_name(&name)).await?;
 
         let white = Backlight::new(50, 50, 50)?;
-        dial.set_backlight(white).await?;
+        retry(&backoff, "set dial backlight", || dial.set_backlight(white)).await?;
         if let Some(img) = metric.img_file() {
-            img.set_img(&dial).await?;
+            retry(&backoff, "set dial image", || {
+                use reqwest::multipart::Part;
+                let part = Part::bytes(img.image);
+                tracing::info!("setting image for {} to {}", dial.id(), img.name);
+                dial.set_image(img.name, part, false)
+            })
+            .await?;
         }
 
         tracing::info!("updating dial with {metric:?} every {update_interval:?}");
@@ -404,12 +445,66 @@ impl DialManager {
                 }
                 _ => miette::bail!("unsupported Metric type {metric:?}"),
             };
-            dial.set(value)
+            retry(&backoff, "set value", || dial.set(value))
                 .await
                 .with_context(|| format!("failed to set value for {name} to {value}"))?;
             if metric != Metric::CpuLoad {
                 interval.tick().await;
             }
         }
+    }
+}
+
+// === impl RetryConfig ===
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            initial_backoff: Self::default_initial_backoff(),
+            jitter: Self::default_jitter(),
+            max_backoff: Self::default_max_backoff(),
+            max_elapsed_time: Some(Duration::from_millis(
+                backoff::default::MAX_ELAPSED_TIME_MILLIS,
+            )),
+            multiplier: Self::default_multiplier(),
+        }
+    }
+}
+
+impl RetryConfig {
+    const fn default_initial_backoff() -> Duration {
+        Duration::from_millis(backoff::default::INITIAL_INTERVAL_MILLIS)
+    }
+    const fn default_jitter() -> f64 {
+        backoff::default::RANDOMIZATION_FACTOR
+    }
+
+    const fn default_max_backoff() -> Duration {
+        Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS)
+    }
+
+    const fn default_multiplier() -> f64 {
+        backoff::default::MULTIPLIER
+    }
+
+    fn backoff_builder(&self) -> backoff::ExponentialBackoffBuilder {
+        let mut builder = backoff::ExponentialBackoffBuilder::new();
+        builder
+            .with_initial_interval(self.initial_backoff)
+            .with_randomization_factor(self.jitter)
+            .with_max_interval(self.max_backoff)
+            .with_max_elapsed_time(self.max_elapsed_time);
+        builder
+    }
+}
+
+fn backoff_error(error: vu_api::api::Error) -> backoff::Error<vu_api::api::Error> {
+    use vu_api::api::Error;
+    match error {
+        error @ Error::BuildUrl(_)
+        | error @ Error::BuildRequest(_)
+        | error @ Error::InvalidBacklight(_)
+        | error @ Error::InvalidValue(_) => backoff::Error::permanent(error),
+        error => backoff::Error::transient(error),
     }
 }

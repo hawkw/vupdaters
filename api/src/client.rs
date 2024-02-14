@@ -6,6 +6,7 @@ use core::fmt;
 pub use reqwest::ClientBuilder;
 use reqwest::{header::HeaderValue, IntoUrl, Method, Url};
 use std::sync::Arc;
+use tracing::Level;
 
 #[derive(Debug, Clone)]
 #[must_use]
@@ -54,7 +55,11 @@ impl Client {
         })
     }
 
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self), err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn list_dials(&self) -> Result<Vec<(Dial, api::DialInfo)>, api::Error> {
         let url = self.cfg.base_url.join("/api/v0/dial/list")?;
         let response = self
@@ -112,13 +117,23 @@ impl Dial {
         &self.uid
     }
 
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self), fields(uid = %self.uid),  err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn status(&self) -> Result<dial::Status, api::Error> {
         let response = self.build_request(Method::GET, "status")?.send().await?;
         response_json(response).await
     }
 
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self), fields(uid = %self.uid),  err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn set_name(&self, name: &str) -> Result<(), api::Error> {
         let rsp = self
             .build_request(Method::GET, "name")?
@@ -127,8 +142,12 @@ impl Dial {
             .await?;
         response_json(rsp).await
     }
-
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self), fields(uid = %self.uid),  err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn set(&self, value: Value) -> Result<(), api::Error> {
         let rsp = self
             .build_request(Method::GET, "set")?
@@ -138,7 +157,12 @@ impl Dial {
         response_json(rsp).await
     }
 
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self), fields(uid = %self.uid), err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn set_backlight(
         &self,
         dial::Backlight { red, green, blue }: dial::Backlight,
@@ -155,7 +179,12 @@ impl Dial {
         response_json(rsp).await
     }
 
-    #[tracing::instrument(level = tracing::Level::DEBUG, skip(self, part), fields(uid = %self.uid), err(Display))]
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self, part),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
     pub async fn set_image(
         &self,
         filename: &str,
@@ -171,6 +200,17 @@ impl Dial {
             req = req.query(&[("force", "true")])
         }
         let rsp = req.multipart(multipart).send().await?;
+        response_json(rsp).await
+    }
+
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
+    pub async fn reload_hw_info(&self) -> Result<dial::Status, api::Error> {
+        let rsp = self.build_request(Method::GET, "reload")?.send().await?;
         response_json(rsp).await
     }
 }

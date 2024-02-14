@@ -48,11 +48,17 @@
           in rustPlatform.buildRustPackage rec {
             pname = cargoTOML.package.name;
             version = cargoTOML.package.version;
+            buildInputs =
+              if stdenv.isLinux then [
+                udev.dev
+              ] else [ ];
+            nativeBuildInputs = if stdenv.isLinux then [ pkg-config ] else [ ];
 
             inherit src;
 
             cargoLock = { lockFile = "${src}/Cargo.lock"; };
-
+            # PKG_CONFIG_PATH =
+            #   if stdenv.isLinux then lib.makeLibraryPath [ pkgs.udev.dev ] else "";
             meta = {
               inherit (cargoTOML.package) description homepage license;
               maintainers = cargoTOML.package.authors;
@@ -62,6 +68,7 @@
       devShells = forAllSystems (pkgs: with pkgs; {
         default = mkShell {
           VU_DIALS_API_KEY = defaultApiKey;
+          nativeBuildInputs = self.packages.${system}.default.nativeBuildInputs;
           buildInputs = [
             self.packages.${system}.default.buildInputs
             oranda.packages.${system}.default

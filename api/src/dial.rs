@@ -42,9 +42,10 @@ pub struct Value(u8);
 #[derive(Debug, Error, miette::Diagnostic)]
 #[error("invalid value {0}")]
 #[help = "values must be in the range 0-100"]
+#[diagnostic(code(vu_api::errors::backlight_error))]
 pub struct ValueError(u8);
 
-#[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Backlight {
     pub red: Value,
     pub green: Value,
@@ -53,8 +54,12 @@ pub struct Backlight {
 
 #[derive(Debug, Error, miette::Diagnostic)]
 pub enum ValueParseError {
-    #[error("{0}")]
-    InvalidValue(#[from] ValueError),
+    #[error(transparent)]
+    InvalidValue(
+        #[from]
+        #[diagnostic(transparent)]
+        ValueError,
+    ),
     #[error("not a u8: {0}")]
     NotAU8(#[from] std::num::ParseIntError),
 }
@@ -62,8 +67,10 @@ pub enum ValueParseError {
 #[derive(Debug, Error, miette::Diagnostic)]
 #[error("invalid {} value: {}", .field, .value.0)]
 #[help = "red, green, and blue values must be in the range 0-100"]
+#[diagnostic(code(vu_api::errors::backlight_error))]
 pub struct BacklightError {
     #[source]
+    #[diagnostic_source]
     value: ValueError,
     field: &'static str,
 }
