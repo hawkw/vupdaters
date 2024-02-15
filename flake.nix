@@ -112,7 +112,7 @@
           dials = cfg.dials;
         };
         execStart = ''
-          ${daemonName} \
+          ${self.packages.${pkgs.system}.default} \
           --config /etc/${daemonName}.toml \
           --key ${cfg.client.apiKey} \
           --server http://${cfg.client.hostname}:${toString cfg.client.port}
@@ -207,7 +207,6 @@
                 environment = {
                   RUST_LOG = cfg.logFilter;
                 };
-                path = [ self.packages.${pkgs.system}.default ];
                 serviceConfig = {
                   ExecStart = lib.mkDefault execStart;
                   Restart = "on-failure";
