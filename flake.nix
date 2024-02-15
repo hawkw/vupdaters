@@ -216,7 +216,7 @@
                 users.${userName} = {
                   isSystemUser = true;
                   isNormalUser = false;
-                  home = "/var/lib/${userName}";
+                  home = "/home/${userName}";
                   createHome = true;
                   group = userName;
                   extraGroups = [ "dialout" ];
