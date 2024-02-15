@@ -209,11 +209,16 @@
               };
             }
             (mkIf cfg.enableHotplug {
-              users.users.${userName} = {
-                isSystemUser = true;
-                isNormalUser = false;
-                home = "/var/lib/${userName}";
-                createHome = true;
+              users = {
+                users.${userName} = {
+                  isSystemUser = true;
+                  isNormalUser = false;
+                  home = "/var/lib/${userName}";
+                  createHome = true;
+                  group = userName;
+                  extraGroups = [ "dialout" ];
+                };
+                groups.${userName} = { };
               };
 
               systemd.services = {
