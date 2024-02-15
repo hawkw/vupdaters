@@ -116,7 +116,13 @@
         options.services.vu-dials.${daemonName} = with types; {
           enable = mkEnableOption "Enable the VU-1 dials update daemon";
           enableHotplug = mkEnableOption "Enable USB hotplug support for VU-Server";
-
+          logFilter = mkOption
+            {
+              type = separatedString ",";
+              default = "info";
+              example = "info,vupdaters=debug";
+              description = "`tracing-subscriber` log filtering configuration for vupdated";
+            };
           client = mkOption {
             description = "Configuration for the VU-Server HTTP client.";
             default = { };
@@ -198,6 +204,9 @@
                   --key ${cfg.client.apiKey} \
                   --server http://${cfg.client.hostname}:${toString cfg.client.port}
                 '';
+                environment = {
+                  RUST_LOG = cfg.logFilter;
+                };
                 path = [ self.packages.${pkgs.system}.default ];
                 serviceConfig = {
                   Restart = "on-failure";
