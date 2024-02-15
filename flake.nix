@@ -233,6 +233,19 @@
                 groups.${userName} = { };
               };
 
+              security.polkit.extraConfig = ''
+                  polkit.addRule(function(action, subject) {
+                    if (action.id == "org.freedesktop.systemd1.manage-units") {
+                        if (action.lookup("unit") == "${serverUnit}") {
+                            var verb = action.lookup("verb");
+                            if (verb == "start" || verb == "stop" || verb == "restart") {
+                                return polkit.Result.YES;
+                            }
+                        }
+                    }
+                });
+              '';
+
               systemd.services = {
                 ${serverName} = {
                   serviceConfig = {
