@@ -39,8 +39,16 @@
     {
       packages = forAllSystems (pkgs: with pkgs; let
         # use the Rust toolchain specified in the project's rust-toolchain.toml
-        rustToolchain = pkgsBuildHost.rust-bin.fromRustupToolchainFile
-          ./rust-toolchain.toml;
+        rustToolchain =
+          let
+            file = pkgsBuildHost.rust-bin.fromRustupToolchainFile
+              ./rust-toolchain.toml;
+          in
+          file.override {
+            extensions = [
+              "rust-src" # for rust-analyzer
+            ];
+          };
 
         rustPlatform = makeRustPlatform {
           cargo = rustToolchain;
@@ -73,7 +81,7 @@
       devShells = forAllSystems (pkgs: with pkgs; {
         default = mkShell {
           VU_DIALS_API_KEY = defaultApiKey;
-          nativeBuildInputs = self.packages.${system}.default.nativeBuildInputs;
+          nativeBuildInputs = [ self.packages.${system}.default.nativeBuildInputs ];
           buildInputs = [
             self.packages.${system}.default.buildInputs
             oranda.packages.${system}.default
