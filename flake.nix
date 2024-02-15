@@ -111,6 +111,12 @@
         configFile = configFormat.generate "${daemonName}.toml" {
           dials = cfg.dials;
         };
+        execStart = ''
+          ${daemonName} \
+          --config /etc/${daemonName}.toml \
+          --key ${cfg.client.apiKey} \
+          --server http://${cfg.client.hostname}:${toString cfg.client.port}
+        '';
       in
       {
         options.services.vu-dials.${daemonName} = with types; {
@@ -198,17 +204,12 @@
                 wantedBy = [ "multi-user.target" ];
                 after = [ serverUnit ];
                 requisite = [ serverUnit ];
-                script = ''
-                  ${daemonName} \
-                  --config /etc/${daemonName}.toml \
-                  --key ${cfg.client.apiKey} \
-                  --server http://${cfg.client.hostname}:${toString cfg.client.port}
-                '';
                 environment = {
                   RUST_LOG = cfg.logFilter;
                 };
                 path = [ self.packages.${pkgs.system}.default ];
                 serviceConfig = {
+                  ExecStart = lib.mkDefault execStart;
                   Restart = "on-failure";
                   RestartSec = "5s";
                   DynamicUser = lib.mkDefault true;
@@ -245,8 +246,8 @@
                   serviceConfig = {
                     User = userName;
                     DynamicUser = lib.mkForce false;
+                    ExecStart = lib.mkForce "${execStart} --hotplug --hotplug-service ${serverUnit}";
                   };
-                  scriptArgs = "--hotplug --hotplug-service ${serverUnit}";
                 };
               };
             })
