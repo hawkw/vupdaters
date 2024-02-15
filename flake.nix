@@ -202,7 +202,6 @@
                 description = "Streacom VU-1 dials update daemon";
                 wantedBy = [ "multi-user.target" ];
                 after = [ serverUnit ];
-                requisite = [ serverUnit ];
                 environment = {
                   RUST_LOG = cfg.logFilter;
                 };
