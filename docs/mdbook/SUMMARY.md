@@ -7,6 +7,7 @@
 - [Using dialctl](./dialctl.md)
   - [Listing Dials](./dialctl/list.md)
   - [Querying Dial Status](./dialctl/status.md)
+    - [Reloading Dial Status](./dialctl/reload.md)
   - [Setting Dial State](./dialctl/set.md)
 
 # vupdated
