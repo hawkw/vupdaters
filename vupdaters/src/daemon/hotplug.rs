@@ -17,7 +17,7 @@ pub(crate) async fn run(settings: HotplugSettings) -> miette::Result<()> {
     } = settings;
     assert!(enabled, "hotplug::run should only be called if enabled");
 
-    let dbus_conn = zbus::Connection::session()
+    let dbus_conn = zbus::Connection::system()
         .await
         .into_diagnostic()
         .context("failed to connect to dbus")?;
