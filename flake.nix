@@ -66,6 +66,7 @@
                 udev.dev
               ] else [ ];
             nativeBuildInputs = if stdenv.isLinux then [ pkg-config ] else [ ];
+            buildFeatures = if stdenv.isLinux then [ "hotplug" ] else [ ];
             inherit src;
             cargoLock = { lockFile = "${src}/Cargo.lock"; };
             # PKG_CONFIG_PATH =
