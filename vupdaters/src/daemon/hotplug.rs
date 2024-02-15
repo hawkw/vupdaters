@@ -1,3 +1,4 @@
+use super::HotplugSettings;
 use futures::stream::StreamExt;
 use miette::{Context, IntoDiagnostic};
 use std::convert::TryInto;
@@ -64,7 +65,7 @@ pub(crate) async fn run(settings: HotplugSettings) -> miette::Result<()> {
                 "USB-serial device bound, trying to restart VU-Server..."
             );
             manager
-                .restart_unit(settings.hotplug_service.clone(), "replace".to_string())
+                .restart_unit(hotplug_service.clone(), "replace".to_string())
                 .await
                 .into_diagnostic()
                 .context("failed to restart VU-Server unit")?;
