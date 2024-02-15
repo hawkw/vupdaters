@@ -17,7 +17,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, oranda }:
+  outputs = { self, nixpkgs, rust-overlay, oranda, vu-server, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       overlays = [ (import rust-overlay) ];
