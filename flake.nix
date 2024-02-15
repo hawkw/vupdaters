@@ -185,15 +185,12 @@
                 wantedBy = [ "multi-user.target" ];
                 after = [ serverUnit ];
                 requisite = [ serverUnit ];
-                script = "${daemonName}";
-                scriptArgs = [
-                  "--config"
-                  "/etc/${daemonName}.toml"
-                  "--key"
-                  "${cfg.client.apiKey}"
-                  "--server"
-                  "http://${cfg.client.hostname}:${toString cfg.client.port}"
-                ];
+                script = ''
+                  ${daemonName} \
+                  --config /etc/${daemonName}.toml \
+                  --key ${cfg.client.apiKey} \
+                  --server http://${cfg.client.hostname}:${toString cfg.client.port}
+                '';
                 path = [ self.packages.${pkgs.system}.default ];
                 serviceConfig = {
                   Restart = "on-failure";
@@ -233,7 +230,7 @@
                     User = userName;
                     DynamicUser = lib.mkForce false;
                   };
-                  scriptArgs = [ "--hotplug" "--hotplug-service" serverUnit ];
+                  scriptArgs = "--hotplug --hotplug-service ${serverUnit}";
                 };
               };
             })
