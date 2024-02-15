@@ -245,7 +245,7 @@
                   serviceConfig = {
                     User = userName;
                     DynamicUser = lib.mkForce false;
-                    ExecStart = lib.mkForce "${execStart}\n --hotplug --hotplug-service ${serverUnit}";
+                    ExecStart = lib.mkForce "${execStart} --hotplug --hotplug-service ${serverUnit}";
                   };
                 };
               };
