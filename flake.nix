@@ -115,8 +115,7 @@
           ${self.packages.${pkgs.system}.default}/bin/vupdated \
           --config /etc/${daemonName}.toml \
           --key ${cfg.client.apiKey} \
-          --server http://${cfg.client.hostname}:${toString cfg.client.port}
-        '';
+          --server http://${cfg.client.hostname}:${toString cfg.client.port}'';
       in
       {
         options.services.vu-dials.${daemonName} = with types; {
@@ -245,7 +244,10 @@
                   serviceConfig = {
                     User = userName;
                     DynamicUser = lib.mkForce false;
-                    ExecStart = lib.mkForce "${execStart} --hotplug --hotplug-service ${serverUnit}";
+                    ExecStart = lib.mkForce ''
+                      ${execStart} \
+                      --hotplug --hotplug-service ${serverUnit}
+                    '';
                   };
                 };
               };
