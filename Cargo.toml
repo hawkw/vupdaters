@@ -6,6 +6,10 @@ members = [
     "protocol",
     "vupdaters",
 ]
+defaultMembers = [
+    "api",
+    "vupdaters",
+]
 
 [workspace.package]
 edition = "2021"

@@ -30,9 +30,6 @@
               };
             in
             function pkgs);
-
-      src = ./.;
-
       defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
       daemonName = "vupdated";
     in
@@ -54,11 +51,14 @@
           cargo = rustToolchain;
           rustc = rustToolchain;
         };
+
+        src = nix-gitignore.gitignoreSource [ ] ./.;
+
       in
       {
         default =
           let cargoTOML = lib.importTOML "${src}/vupdaters/Cargo.toml";
-          in rustPlatform.buildRustPackage rec {
+          in rustPlatform.buildRustPackage {
             pname = cargoTOML.package.name;
             version = cargoTOML.package.version;
             buildInputs =
@@ -66,9 +66,7 @@
                 udev.dev
               ] else [ ];
             nativeBuildInputs = if stdenv.isLinux then [ pkg-config ] else [ ];
-
             inherit src;
-
             cargoLock = { lockFile = "${src}/Cargo.lock"; };
             # PKG_CONFIG_PATH =
             #   if stdenv.isLinux then lib.makeLibraryPath [ pkgs.udev.dev ] else "";
