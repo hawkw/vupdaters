@@ -100,7 +100,8 @@
       "inputs": {
         "nixpkgs": "nixpkgs",
         "oranda": "oranda",
-        "rust-overlay": "rust-overlay"
+        "rust-overlay": "rust-overlay",
+        "vu-server": "vu-server"
       }
     },
     "rust-analyzer-src": {
@@ -168,6 +169,26 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "vu-server": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1708015841,
+        "narHash": "sha256-LbF7tKCFVD970k33Gzxshj3TACWKuhKlwTBeeFofqLI=",
+        "owner": "hawkw",
+        "repo": "vu-server-flake",
+        "rev": "396a7910f12828159d73e728930c48b80bb251f4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hawkw",
+        "repo": "vu-server-flake",
         "type": "github"
       }
     }

@@ -34,6 +34,7 @@
       src = ./.;
 
       defaultApiKey = "cTpAWYuRpA2zx75Yh961Cg";
+      daemonName = "vupdated";
     in
     {
       packages = forAllSystems (pkgs: with pkgs; let
@@ -86,26 +87,26 @@
               type = "app";
               program = "${self.packages.${system}.default}/bin/dialctl";
             };
-          vupdated = {
+          ${daemonName} = {
             type = "app";
-            program = "${self.packages.${system}.default}/bin/vupdated";
+            program = "${self.packages.${system}.default}/bin/${daemonName}";
           };
           default = self.apps.${system}.dialctl;
         });
       nixosModules.default = { config, lib, pkgs, ... }: with lib; let
         cfg = config.services.vu-dials.vupdated;
         serverCfg = config.services.vu-dials.server.server;
-        dirname = "vupdated";
-        serverUnit = "VU-Server.service";
+        serverName = "VU-Server";
+        serverUnit = "${serverName}.service";
         userName = "vudials";
 
         configFormat = pkgs.formats.toml { };
-        configFile = configFormat.generate "${dirname}.toml" {
+        configFile = configFormat.generate "${daemonName}.toml" {
           dials = cfg.dials;
         };
       in
       {
-        options.services.vu-dials.vupdated = with types; {
+        options.services.vu-dials.${daemonName} = with types; {
           enable = mkEnableOption "Enable the VU-1 dials update daemon";
           enableHotplug = mkEnableOption "Enable USB hotplug support for VU-Server";
 
@@ -177,17 +178,17 @@
         config = mkIf cfg.enable
           (mkMerge [
             {
-              environment.etc."${dirname}.toml".source = configFile;
+              environment.etc."${daemonName}.toml".source = configFile;
               services.vu-dials.server.enable = true;
-              systemd.services.${vupdated} = {
+              systemd.services.${daemonName} = {
                 description = "Streacom VU-1 dials update daemon";
                 wantedBy = [ "multi-user.target" ];
                 after = [ serverUnit ];
                 requisite = [ serverUnit ];
-                script = "vupdated";
+                script = "${daemonName}";
                 scriptArgs = [
                   "--config"
-                  "/etc/${dirname}.toml"
+                  "/etc/${daemonName}.toml"
                   "--key"
                   "${cfg.client.apiKey}"
                   "--server"
@@ -198,11 +199,11 @@
                   Restart = "on-failure";
                   RestartSec = "5s";
                   DynamicUser = lib.mkDefault true;
-                  RuntimeDirectory = dirname;
+                  RuntimeDirectory = daemonName;
                   RuntimeDirectoryMode = "0755";
-                  StateDirectory = dirname;
+                  StateDirectory = daemonName;
                   StateDirectoryMode = "0755";
-                  CacheDirectory = dirname;
+                  CacheDirectory = daemonName;
                   CacheDirectoryMode = "0750";
                 };
               };
@@ -216,16 +217,16 @@
               };
 
               systemd.services = {
-                "VU-Server" = {
+                ${serverName} = {
                   serviceConfig = {
                     User = userName;
                     DynamicUser = lib.mkForce false;
                   };
                 };
-                vupdated = {
+                ${daemonName} = {
                   User = userName;
                   DynamicUser = lib.mkForce false;
-                  scriptArgs = [ "--hotplug" "--hotplug-service" "VU-Server.service" ];
+                  scriptArgs = [ "--hotplug" "--hotplug-service" serverUnit ];
                 };
               };
             })
