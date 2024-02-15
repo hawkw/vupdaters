@@ -224,8 +224,10 @@
                   };
                 };
                 ${daemonName} = {
-                  User = userName;
-                  DynamicUser = lib.mkForce false;
+                  serviceConfig = {
+                    User = userName;
+                    DynamicUser = lib.mkForce false;
+                  };
                   scriptArgs = [ "--hotplug" "--hotplug-service" serverUnit ];
                 };
               };
