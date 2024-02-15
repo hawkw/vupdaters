@@ -4,10 +4,18 @@ use std::convert::TryInto;
 use tokio_udev::{AsyncMonitorSocket, EventType, MonitorBuilder};
 use zbus_systemd::{systemd1, zbus};
 
-const VU_SERVER_UNIT: &str = "VU-Server.service";
+#[tracing::instrument(
+    level = tracing::Level::INFO,
+    name = "hotplug", skip(settings),
+    fields(hotplug_service = %settings.hotplug_service),
+    err(Display),)]
+pub(crate) async fn run(settings: HotplugSettings) -> miette::Result<()> {
+    let HotplugSettings {
+        enabled,
+        hotplug_service,
+    } = settings;
+    assert!(enabled, "hotplug::run should only be called if enabled");
 
-#[tracing::instrument(level = tracing::Level::INFO, name = "hotplug")]
-pub(crate) async fn run() -> miette::Result<()> {
     let dbus_conn = zbus::Connection::system()
         .await
         .into_diagnostic()
@@ -56,13 +64,15 @@ pub(crate) async fn run() -> miette::Result<()> {
                 "USB-serial device bound, trying to restart VU-Server..."
             );
             manager
-                .restart_unit(VU_SERVER_UNIT.to_string(), "replace".to_string())
+                .restart_unit(settings.hotplug_service.clone(), "replace".to_string())
                 .await
                 .into_diagnostic()
                 .context("failed to restart VU-Server unit")?;
             tracing::info!("VU-Server unit restarted successfully");
         }
     }
+
+    tracing::info!("hotplug event stream ended");
 
     Ok(())
 }

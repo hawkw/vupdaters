@@ -11,9 +11,6 @@ use vu_api::{
 #[cfg(all(target_os = "linux", feature = "hotplug"))]
 mod hotplug;
 
-#[cfg(all(feature = "hotplug", not(target_os = "linux")))]
-compile_error!("hotplug feature is only supported on Linux");
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     dials: HashMap<String, DialConfig>,
@@ -87,8 +84,33 @@ pub struct Args {
     #[clap(flatten)]
     output_args: crate::cli::OutputArgs,
 
+    #[clap(flatten)]
+    hotplug: HotplugSettings,
+
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
+}
+
+#[derive(Debug, clap::Parser)]
+#[command(next_help_heading = "USB Hotplug Settings")]
+#[group(id = "hotplug", multiple = true)]
+struct HotplugSettings {
+    /// Enable USB hotplug management.
+    ///
+    /// If this is set, then `vupdated` will listen for USB hotplug events for
+    /// USB-serial TTYs, and, when one occurs, attempt to restart the VU-Server
+    /// systemd service.
+    ///
+    /// This feature is currently only supported on Linux.
+    #[clap(long = "hotplug")]
+    enabled: bool,
+
+    /// The systemd unit name for the VU-Server service.
+    ///
+    /// When a hotplug event for a USB-serial device occurs, `vupdated` will
+    /// attempt to restart this systemed service.
+    #[clap(long, default_value = "VU-Server.service")]
+    hotplug_service: String,
 }
 
 #[derive(Debug, clap::Subcommand)]
@@ -143,6 +165,7 @@ impl Args {
             client_args,
             output_args,
             config_path,
+            hotplug,
         } = self;
         output_args.init_tracing()?;
         let client = client_args
@@ -162,7 +185,7 @@ impl Args {
                         .into_diagnostic()
                         .with_context(|| format!("failed to parse config file {config_path}"))?
                 };
-                run_daemon(client, config).await?;
+                run_daemon(client, config, hotplug).await?;
             }
         }
 
@@ -268,9 +291,23 @@ struct ImgFile {
     image: &'static [u8],
 }
 
-pub async fn run_daemon(client: Client, config: Config) -> miette::Result<()> {
+pub async fn run_daemon(
+    client: Client,
+    config: Config,
+    hotplug: HotplugSettings,
+) -> miette::Result<()> {
     // TODO(eliza): handle sighup...
     let mut tasks = tokio::task::JoinSet::new();
+
+    if hotplug.enabled {
+        #[cfg(all(target_os = "linux", feature = "hotplug"))]
+        tasks.spawn_local(hotplug::run(hotplug));
+        #[cfg(all(target_os = "linux", not(feature = "hotplug")))]
+        miette::bail!("hotplug support requires `vupdated` to be built with `--features hotplug`!");
+        #[cfg(not(target_os = "linux"))]
+        miette::bail!("hotplug support is currently only available on Linux!");
+    }
+
     let mut dials_by_index = HashMap::new();
 
     for (dial, _) in client.list_dials().await? {
@@ -307,9 +344,6 @@ pub async fn run_daemon(client: Client, config: Config) -> miette::Result<()> {
         };
         tasks.spawn(dial_manager.run());
     }
-
-    #[cfg(all(target_os = "linux", feature = "hotplug"))]
-    tasks.spawn_local(hotplug::run());
 
     while let Some(next) = tasks.join_next().await {
         next.into_diagnostic()?.context("a task failed!")?;

@@ -11,6 +11,10 @@
       url = "github:axodotdev/oranda";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    vu-server = {
+      url = "https://flakehub.com/f/hawkw/vu-server/*.tar.gz";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { self, nixpkgs, rust-overlay, oranda }:
@@ -90,8 +94,10 @@
         });
       nixosModules.default = { config, lib, pkgs, ... }: with lib; let
         cfg = config.services.vu-dials.vupdated;
+        serverCfg = config.services.vu-dials.server.server;
         dirname = "vupdated";
         serverUnit = "VU-Server.service";
+        userName = "vudials";
 
         configFormat = pkgs.formats.toml { };
         configFile = configFormat.generate "${dirname}.toml" {
@@ -101,6 +107,8 @@
       {
         options.services.vu-dials.vupdated = with types; {
           enable = mkEnableOption "Enable the VU-1 dials update daemon";
+          enableHotplug = mkEnableOption "Enable USB hotplug support for VU-Server";
+
           client = mkOption {
             description = "Configuration for the VU-Server HTTP client.";
             default = { };
@@ -109,13 +117,13 @@
               options = {
                 hostname = mkOption {
                   type = uniq str;
-                  default = "localhost";
+                  default = serverCfg.hostname;
                   example = "localhost";
                   description = "The server's hostname. Probably this should be localhost.";
                 };
                 port = mkOption {
                   type = uniq port;
-                  default = 5340;
+                  default = serverCfg.port;
                   example = 5340;
                   description = "The server's HTTP port.";
                 };
@@ -166,33 +174,62 @@
             };
         };
 
-        config = mkIf cfg.enable {
-          environment.etc."${dirname}.toml".source = configFile;
-          systemd.services.vupdated = {
-            description = "Streacom VU-1 dials update daemon";
-            wantedBy = [ "multi-user.target" ];
-            after = [ serverUnit ];
-            requisite = [ serverUnit ];
-            script = ''
-              vupdated \
-                --config /etc/${dirname}.toml \
-                --key ${cfg.client.apiKey} \
-                --server http://${cfg.client.hostname}:${toString cfg.client.port}
-            '';
-            path = [ self.packages.${pkgs.system}.default ];
-            serviceConfig = {
-              Restart = "on-failure";
-              RestartSec = "5s";
-              DynamicUser = true;
-              RuntimeDirectory = dirname;
-              RuntimeDirectoryMode = "0755";
-              StateDirectory = dirname;
-              StateDirectoryMode = "0755";
-              CacheDirectory = dirname;
-              CacheDirectoryMode = "0750";
-            };
-          };
-        };
+        config = mkIf cfg.enable
+          (mkMerge [
+            {
+              environment.etc."${dirname}.toml".source = configFile;
+              services.vu-dials.server.enable = true;
+              systemd.services.${vupdated} = {
+                description = "Streacom VU-1 dials update daemon";
+                wantedBy = [ "multi-user.target" ];
+                after = [ serverUnit ];
+                requisite = [ serverUnit ];
+                script = "vupdated";
+                scriptArgs = [
+                  "--config"
+                  "/etc/${dirname}.toml"
+                  "--key"
+                  "${cfg.client.apiKey}"
+                  "--server"
+                  "http://${cfg.client.hostname}:${toString cfg.client.port}"
+                ];
+                path = [ self.packages.${pkgs.system}.default ];
+                serviceConfig = {
+                  Restart = "on-failure";
+                  RestartSec = "5s";
+                  DynamicUser = lib.mkDefault true;
+                  RuntimeDirectory = dirname;
+                  RuntimeDirectoryMode = "0755";
+                  StateDirectory = dirname;
+                  StateDirectoryMode = "0755";
+                  CacheDirectory = dirname;
+                  CacheDirectoryMode = "0750";
+                };
+              };
+            }
+            (mkIf cfg.enableHotplug {
+              users.users.${userName} = {
+                isSystemUser = true;
+                isNormalUser = false;
+                home = "/var/lib/${userName}";
+                createHome = true;
+              };
+
+              systemd.services = {
+                "VU-Server" = {
+                  serviceConfig = {
+                    User = userName;
+                    DynamicUser = lib.mkForce false;
+                  };
+                };
+                vupdated = {
+                  User = userName;
+                  DynamicUser = lib.mkForce false;
+                  scriptArgs = [ "--hotplug" "--hotplug-service" "VU-Server.service" ];
+                };
+              };
+            })
+          ]);
       };
     };
 }

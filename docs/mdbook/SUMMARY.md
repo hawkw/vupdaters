@@ -14,5 +14,6 @@
 - [Using vupdated](./vupdated.md)
   - [Configuration](./vupdated/config.md)
     - [Generating config files](./vupdated/gen-config.md)
-  - [Running as a Systemd Service]()
-  - [NixOS module]()
+  - [Running as a Systemd Service](./vupdated/systemd.md)
+  - [USB Hotplug](./vupdated/hotplug.md)
+  - [NixOS module](./vupdated/nixos.md)
