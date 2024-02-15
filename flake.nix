@@ -12,7 +12,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     vu-server = {
-      url = "https://flakehub.com/f/hawkw/vu-server/*.tar.gz";
+      url = "github:hawkw/vu-server-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
