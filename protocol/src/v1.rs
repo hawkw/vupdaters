@@ -53,7 +53,7 @@ pub enum HubCommand {
     DialBtlReadLastStatus = 0xFD,
 }
 
-const COMMAND_SUFFIX: &[u8; 2] = b"\r\n";
+pub const COMMAND_SUFFIX: &[u8; 2] = b"\r\n";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]

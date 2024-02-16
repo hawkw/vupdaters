@@ -280,13 +280,9 @@ impl SetValues {
                         backlight.blue = blue;
                     }
 
-                    if let Err(e) = dial
-                        .set_backlight(backlight.clone())
-                        .await
-                        .with_context(|| {
-                            format!("failed to set backlight for dial {selection} to {backlight:?}")
-                        })
-                    {
+                    if let Err(e) = dial.set_backlight(backlight).await.with_context(|| {
+                        format!("failed to set backlight for dial {selection} to {backlight:?}")
+                    }) {
                         errors.push(e);
                     }
                 }
