@@ -119,6 +119,7 @@ impl Dial {
 
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::status",
         skip(self),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
@@ -130,6 +131,7 @@ impl Dial {
 
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::set_name",
         skip(self),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
@@ -142,8 +144,10 @@ impl Dial {
             .await?;
         response_json(rsp).await
     }
+
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::set",
         skip(self),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
@@ -159,6 +163,7 @@ impl Dial {
 
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::set_backlight",
         skip(self),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
@@ -181,6 +186,7 @@ impl Dial {
 
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::set_image",
         skip(self, part),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
@@ -205,6 +211,7 @@ impl Dial {
 
     #[tracing::instrument(
         level = Level::DEBUG,
+        name = "Dial::reload_hw_info",
         skip(self),
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),

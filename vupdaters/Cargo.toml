@@ -25,6 +25,7 @@ reqwest = { workspace = true, default-features = false, features = ["rustls-tls"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true, features = ["macros"] }
+supports-color = { workspace = true }
 systemstat = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

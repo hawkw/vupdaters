@@ -34,6 +34,17 @@ pub struct OutputArgs {
     /// If set, log to the system journal, instead of stderr.
     #[clap(long, global = true)]
     journald: bool,
+
+    /// If set, forcibly disable ANSI colors in stderr output.
+    ///
+    /// See https://no-color.org/
+    #[clap(
+        long,
+        env = "NO_COLOR",
+        value_parser = clap::builder::BoolishValueParser::new(),
+        global = true,
+    )]
+    no_color: bool,
 }
 
 impl ClientArgs {
@@ -44,7 +55,7 @@ impl ClientArgs {
 
 impl OutputArgs {
     pub fn init_tracing(self) -> miette::Result<()> {
-        use tracing_subscriber::prelude::*;
+        use tracing_subscriber::{fmt, prelude::*};
         let subcriber = tracing_subscriber::registry().with(self.filter);
         if self.journald {
             let layer = tracing_journald::layer()
@@ -52,9 +63,15 @@ impl OutputArgs {
                 .context("could not connect to journald!")?;
             subcriber.with(layer).init();
         } else {
-            subcriber
-                .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-                .init();
+            let has_ansi_colors = supports_color::on(supports_color::Stream::Stderr)
+                .map(|colors| colors.has_basic)
+                .unwrap_or(false);
+            let fmt = fmt::layer()
+                .with_span_events(fmt::format::FmtSpan::CLOSE)
+                .with_timer(fmt::time::uptime())
+                .with_writer(std::io::stderr)
+                .with_ansi(has_ansi_colors);
+            subcriber.with(fmt).init();
         }
 
         Ok(())

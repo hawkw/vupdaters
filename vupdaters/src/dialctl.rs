@@ -188,6 +188,11 @@ impl Command {
 }
 
 impl DialSelection {
+    #[tracing::instrument(
+        level = tracing::Level::DEBUG,
+        skip(self, client),
+        fields(message = %self)
+    )]
     async fn select_dial(
         &self,
         client: &vu_api::Client,
@@ -198,36 +203,62 @@ impl DialSelection {
                 .into_diagnostic()
                 .map(|dial| (dial, None));
         }
+
         let dials = client.list_dials().await?;
-        let mut found_dial = None;
-        for (dial, _) in dials {
-            let status = dial
-                .status()
-                .await
-                .with_context(|| format!("failed to get status for dial {}", dial.id()))?;
-            let found = match (self.index, self.name.as_deref()) {
-                (Some(index), None) => status.index == index,
-                (None, Some(name)) => status.dial_name == name,
+        for (dial, info) in dials {
+            match (self.index, self.name.as_deref()) {
+                (Some(index), None) => {
+                    let status = dial
+                        .status()
+                        .await
+                        .with_context(|| format!("failed to get status for dial {}", dial.id()))?;
+                    if status.index == index {
+                        tracing::debug!(
+                            dial.index = index,
+                            dial.name = %status.dial_name,
+                            dial.uid = %status.uid,
+                            "found dial by index",
+                        );
+                        return Ok((dial, Some(status)));
+                    } else {
+                        tracing::debug!(
+                            dial.index = status.index,
+                            dial.name = %status.dial_name,
+                            dial.uid = %status.uid,
+                            "dial does not match index {index}",
+                        );
+                    }
+                }
+                (None, Some(name)) if info.dial_name == name => {
+                    tracing::debug!(
+                        dial.name = %info.dial_name,
+                        dial.uid = %info.uid,
+                        "found dial by name",
+                    );
+                    return Ok((dial, None));
+                }
+                (None, Some(name)) => {
+                    tracing::debug!(
+                        dial.name = %info.dial_name,
+                        dial.uid = %info.uid,
+                        "dial does not match name {name:?}",
+                    );
+                }
                 _ => unreachable!("selection must be validated to include either an index or name"),
             };
-            if found {
-                found_dial = Some((dial, Some(status)));
-                break;
-            }
         }
-        found_dial.ok_or_else(|| match (self.index, self.name.as_deref()) {
-            (Some(index), _) => miette::miette!("no dial found with index {index}"),
-            (None, Some(name)) => miette::miette!("no dial found with name {name}"),
-            _ => unreachable!("selection must be validated to include either an index or name"),
-        })
+
+        Err(miette::miette!("no dial found for {self}"))
     }
 }
 
 impl fmt::Display for DialSelection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.uid {
-            Some(ref uid) => write!(f, "ID {}", uid),
-            None => write!(f, "index {}", self.index.expect("index must be provided")),
+        match (self.uid.as_ref(), self.index, self.name.as_deref()) {
+            (Some(uid), _, _) => write!(f, "ID {uid}"),
+            (None, Some(index), _) => write!(f, "index {index}"),
+            (None, None, Some(name)) => write!(f, "name {name:?}"),
+            _ => f.write_str("<invalid dial selection>"),
         }
     }
 }
