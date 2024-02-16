@@ -337,31 +337,39 @@ struct TextTheme {
 }
 
 const UNICODE_THEME: TextTheme = TextTheme {
-    branch: "├─",
-    trunk: "│",
-    leaf: "└─",
+    branch: "├── ",
+    trunk: "│  ",
+    leaf: "└── ",
 };
 
 const ASCII_THEME: TextTheme = TextTheme {
-    branch: "+-",
-    trunk: "|",
-    leaf: "+-",
+    branch: "+- ",
+    trunk: "| ",
+    leaf: "+- ",
 };
 
 impl OutputMode {
     pub fn print_dial(&self, info: &DialInfo) -> miette::Result<()> {
-        fn print_info(dial: &DialInfo, theme: &TextTheme) {
+        fn print_info(dial: &DialInfo, theme: &TextTheme, style: owo_colors::Style) {
             let TextTheme { branch, leaf, .. } = theme;
-            println!("DIAL: {}", dial.uid);
-            println!("{branch}name: {}", dial.dial_name);
-            println!("{branch}value: {}", dial.value);
-            print_backlight(&dial.backlight, theme);
-            println!("{leaf}image: {}\n", dial.image_file);
+            println!("DIAL: {}", style.style(&dial.uid));
+            println!("{branch}name: {}", style.style(&dial.dial_name));
+            println!("{branch}value: {}", style.style(dial.value));
+            print_backlight(&dial.backlight, theme, style);
+            println!("{leaf}image: {}\n", style.style(&dial.image_file));
         }
 
+        let has_color = supports_color::on(supports_color::Stream::Stdout)
+            .map(|s| s.has_basic)
+            .unwrap_or(false);
+        let style = if has_color {
+            owo_colors::Style::new().bold()
+        } else {
+            owo_colors::Style::new()
+        };
         match self {
-            OutputMode::Ascii => print_info(info, &ASCII_THEME),
-            OutputMode::Text => print_info(info, &UNICODE_THEME),
+            OutputMode::Ascii => print_info(info, &ASCII_THEME, style),
+            OutputMode::Text => print_info(info, &UNICODE_THEME, style),
             OutputMode::Json => {
                 let json = serde_json::to_string_pretty(info).into_diagnostic()?;
                 println!("{json}");
@@ -372,18 +380,18 @@ impl OutputMode {
     }
 
     pub fn print_status(&self, status: &dial::Status) -> miette::Result<()> {
-        fn print_status(dial: &dial::Status, theme: &TextTheme) {
+        fn print_status(dial: &dial::Status, theme: &TextTheme, style: owo_colors::Style) {
             let TextTheme {
                 branch,
                 trunk,
                 leaf,
             } = theme;
-            println!("DIAL: {}", dial.uid);
-            println!("{branch}name: {}", dial.dial_name);
-            println!("{branch}value: {}", dial.value);
-            println!("{branch}index: {}", dial.index);
-            println!("{branch}rgbw: {:?}", dial.rgbw);
-            println!("{branch}image file: {}", dial.image_file);
+            println!("DIAL: {}", style.style(&dial.uid));
+            println!("{branch}name: {}", style.style(&dial.dial_name));
+            println!("{branch}value: {}", style.style(dial.value));
+            println!("{branch}index: {}", style.style(dial.index));
+            println!("{branch}rgbw: {:?}", style.style(&dial.rgbw));
+            println!("{branch}image file: {}", style.style(&dial.image_file));
             let dial::Easing {
                 dial_step,
                 dial_period,
@@ -391,30 +399,64 @@ impl OutputMode {
                 backlight_period,
             } = dial.easing;
             println!("{branch}DIAL EASING:");
-            println!("{trunk} {branch}dial step: {dial_step}");
-            println!("{trunk} {leaf}dial period: {dial_period}");
+            println!("{trunk} {branch}dial step: {}", style.style(dial_step));
+            println!("{trunk} {leaf}dial period: {}", style.style(dial_period));
             println!("{branch}BACKLIGHT EASING:");
-            println!("{trunk} {branch}backlight step: {backlight_step}");
-            println!("{trunk} {leaf}backlight period: {backlight_period}");
+            println!(
+                "{trunk} {branch}backlight step: {}",
+                style.style(backlight_step)
+            );
+            println!(
+                "{trunk} {leaf}backlight period: {}",
+                style.style(backlight_period)
+            );
             println!("{branch}VERSION:");
-            println!("{trunk} {branch}firmware hash: {}", dial.fw_hash);
-            println!("{trunk} {branch}firmware version: {}", dial.fw_version);
-            println!("{trunk} {branch}hardware version: {}", dial.hw_version);
-            println!("{trunk} {leaf}protocol version: {}", dial.protocol_version);
-            print_backlight(&dial.backlight, theme);
+            println!(
+                "{trunk} {branch}firmware hash: {}",
+                style.style(&dial.fw_hash)
+            );
+            println!(
+                "{trunk} {branch}firmware version: {}",
+                style.style(&dial.fw_version)
+            );
+            println!(
+                "{trunk} {branch}hardware version: {}",
+                style.style(&dial.hw_version)
+            );
+            println!(
+                "{trunk} {leaf}protocol version: {}",
+                style.style(&dial.protocol_version)
+            );
+            print_backlight(&dial.backlight, theme, style);
             println!("{branch}STATUS:");
-            println!("{trunk} {branch}value_changed: {}", dial.value_changed);
+            println!(
+                "{trunk} {branch}value_changed: {}",
+                style.style(dial.value_changed)
+            );
             println!(
                 "{trunk} {branch}backlight_changed: {}",
-                dial.backlight_changed
+                style.style(dial.backlight_changed)
             );
-            println!("{trunk} {leaf}image_changed: {}", dial.image_changed);
-            println!("{leaf}update deadline: {}\n", dial.update_deadline);
+            println!(
+                "{trunk} {leaf}image_changed: {}",
+                style.style(dial.image_changed)
+            );
+            println!(
+                "{leaf}update deadline: {}\n",
+                style.style(dial.update_deadline)
+            );
         }
-
+        let has_color = supports_color::on(supports_color::Stream::Stdout)
+            .map(|s| s.has_basic)
+            .unwrap_or(false);
+        let style = if has_color {
+            owo_colors::Style::new().bold()
+        } else {
+            owo_colors::Style::new()
+        };
         match self {
-            OutputMode::Ascii => print_status(status, &ASCII_THEME),
-            OutputMode::Text => print_status(status, &UNICODE_THEME),
+            OutputMode::Ascii => print_status(status, &ASCII_THEME, style),
+            OutputMode::Text => print_status(status, &UNICODE_THEME, style),
             OutputMode::Json => {
                 let json = serde_json::to_string_pretty(status).into_diagnostic()?;
                 println!("{json}");
@@ -475,11 +517,12 @@ fn print_backlight(
         trunk,
         leaf,
     }: &TextTheme,
+    style: owo_colors::Style,
 ) {
     println!("{branch}BACKLIGHT:");
-    println!("{trunk} {branch}red: {red}");
-    println!("{trunk} {branch}green: {green}");
-    println!("{trunk} {leaf}blue: {blue}");
+    println!("{trunk} {branch}red: {}", style.style(red));
+    println!("{trunk} {branch}green: {}", style.style(green));
+    println!("{trunk} {leaf}blue: {}", style.style(blue));
 }
 
 impl MultiError {
