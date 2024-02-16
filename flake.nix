@@ -196,30 +196,7 @@
         config = mkIf cfg.enable
           (mkMerge [
             {
-              environment.etc."${daemonName}.toml".source = configFile;
-              services.vu-dials.server.enable = true;
-              systemd.services.${daemonName} = {
-                description = "Streacom VU-1 dials update daemon";
-                wantedBy = [ "multi-user.target" ];
-                after = [ serverUnit ];
-                environment = {
-                  RUST_LOG = cfg.logFilter;
-                };
-                serviceConfig = {
-                  ExecStart = lib.mkDefault execStart;
-                  Restart = "on-failure";
-                  RestartSec = "5s";
-                  DynamicUser = lib.mkDefault true;
-                  RuntimeDirectory = daemonName;
-                  RuntimeDirectoryMode = "0755";
-                  StateDirectory = daemonName;
-                  StateDirectoryMode = "0755";
-                  CacheDirectory = daemonName;
-                  CacheDirectoryMode = "0750";
-                };
-              };
-            }
-            (mkIf cfg.enableHotplug {
+
               users = {
                 users.${userName} = {
                   isSystemUser = true;
@@ -232,35 +209,54 @@
                 groups.${userName} = { };
               };
 
-              security.polkit.extraConfig = ''
-                  polkit.addRule(function(action, subject) {
-                    if (action.id == "org.freedesktop.systemd1.manage-units") {
-                        if (action.lookup("unit") == "${serverUnit}") {
-                            var verb = action.lookup("verb");
-                            if (verb == "start" || verb == "stop" || verb == "restart") {
-                                return polkit.Result.YES;
-                            }
-                        }
-                    }
-                });
-              '';
+              environment.etc."${daemonName}.toml".source = configFile;
+
+              services.vu-dials.server.enable = true;
 
               systemd.services = {
                 ${serverName} = {
                   serviceConfig = {
+                    # Ensure that VU-Server runs as the `vudials` user, which
+                    # has access to the dialout group.
                     User = userName;
                     DynamicUser = lib.mkForce false;
                   };
                 };
+
                 ${daemonName} = {
-                  serviceConfig = {
-                    User = userName;
-                    DynamicUser = lib.mkForce false;
-                    ExecStart = lib.mkForce ''
-                      ${execStart} \
-                      --hotplug --hotplug-service ${serverUnit}
-                    '';
+                  description = "Streacom VU-1 dials update daemon";
+                  wantedBy = [ "multi-user.target" ];
+                  after = [ serverUnit ];
+                  environment = {
+                    RUST_LOG = cfg.logFilter;
                   };
+                  serviceConfig = {
+                    ExecStart = lib.mkDefault execStart;
+                    Restart = "on-failure";
+                    RestartSec = "5s";
+                    DynamicUser = lib.mkDefault true;
+                    RuntimeDirectory = daemonName;
+                    RuntimeDirectoryMode = "0755";
+                    StateDirectory = daemonName;
+                    StateDirectoryMode = "0755";
+                    CacheDirectory = daemonName;
+                    CacheDirectoryMode = "0750";
+                  };
+                };
+              };
+            }
+            (mkIf cfg.enableHotplug {
+
+              security.polkit.extraConfig = builtins.readFile ./vupdaters/vupdated-hotplug.rules;
+
+              systemd.services.${daemonName} = {
+                serviceConfig = {
+                  User = userName;
+                  DynamicUser = lib.mkForce false;
+                  ExecStart = lib.mkForce ''
+                    ${execStart} \
+                    --hotplug --hotplug-service ${serverUnit}
+                  '';
                 };
               };
             })

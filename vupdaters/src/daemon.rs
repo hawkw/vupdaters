@@ -94,7 +94,7 @@ pub struct Args {
 #[derive(Debug, clap::Parser)]
 #[command(next_help_heading = "USB Hotplug Settings")]
 #[group(id = "hotplug", multiple = true)]
-struct HotplugSettings {
+pub struct HotplugSettings {
     /// Enable USB hotplug management.
     ///
     /// If this is set, then `vupdated` will listen for USB hotplug events for
