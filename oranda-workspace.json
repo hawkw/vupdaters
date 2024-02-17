@@ -3,7 +3,7 @@
         "name": "vupdaters",
         "members": [
             {
-                "slug": "vupdaters",
+                "slug": "",
                 "path": "./vupdaters"
             }
         ],
