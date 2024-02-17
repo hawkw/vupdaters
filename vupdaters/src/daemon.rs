@@ -342,19 +342,27 @@ pub async fn run_daemon(
         tracing::warn!("not enough dials for all dials in config file!");
     }
 
+    let mut dials_spawned = 0;
     for (name, dial_config) in config.dials {
-        let dial = dials_by_index
-            .remove(&dial_config.index)
-            .ok_or_else(|| miette::miette!("no dial for index {}", dial_config.index))?;
-        let dial_manager = DialManager {
-            name,
-            config: dial_config,
-            dial,
-            backoff: config.retries.backoff_builder(),
-            running: running.clone(),
-        };
-        tasks.spawn(dial_manager.run());
+        if let Some(dial) = dials_by_index.remove(&dial_config.index) {
+            let dial_manager = DialManager {
+                name,
+                config: dial_config,
+                dial,
+                backoff: config.retries.backoff_builder(),
+                running: running.clone(),
+            };
+            tasks.spawn(dial_manager.run());
+            dials_spawned += 1;
+        } else {
+            tracing::warn!(
+                "no dial found for index {}, skipping {name}...",
+                dial_config.index
+            );
+        }
     }
+
+    miette::ensure!(dials_spawned > 0, "no dials are connected!");
 
     while let Some(next) = tasks.join_next().await {
         next.into_diagnostic()?.context("a task failed!")?;
