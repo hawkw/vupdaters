@@ -2,11 +2,12 @@ use camino::{Utf8Path, Utf8PathBuf};
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
 use tokio::sync::watch;
 use vu_api::{
     client::{Client, Dial},
-    dial::{Backlight, Value},
+    dial::{Backlight, Percent},
 };
 
 #[cfg(all(target_os = "linux", feature = "hotplug"))]
@@ -40,7 +41,17 @@ pub struct RetryConfig {
 pub struct DialConfig {
     index: usize,
     metric: Metric,
-    update_interval: std::time::Duration,
+    update_interval: Duration,
+    dial_easing: Option<Easing>,
+    backlight_easing: Option<Easing>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Easing {
+    #[serde_as(as = "DurationMilliSeconds<u64>")]
+    period_ms: Duration,
+    step: Percent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, clap::ValueEnum)]
@@ -138,11 +149,9 @@ enum Subcommand {
 }
 
 struct DialManager {
-    name: String,
-    metric: Metric,
-    update_interval: std::time::Duration,
+    config: DialConfig,
     dial: Dial,
-    index: usize,
+    name: String,
     backoff: backoff::ExponentialBackoffBuilder,
     running: watch::Receiver<bool>,
 }
@@ -226,6 +235,14 @@ async fn gen_config(
                 index,
                 metric,
                 update_interval: Duration::from_secs(1),
+                dial_easing: Some(Easing {
+                    period_ms: dial.easing.dial_period,
+                    step: dial.easing.dial_step,
+                }),
+                backlight_easing: Some(Easing {
+                    period_ms: dial.easing.backlight_period,
+                    step: dial.easing.backlight_step,
+                }),
             },
         );
     }
@@ -325,24 +342,14 @@ pub async fn run_daemon(
         tracing::warn!("not enough dials for all dials in config file!");
     }
 
-    for (
-        name,
-        DialConfig {
-            metric,
-            update_interval,
-            index,
-        },
-    ) in config.dials
-    {
+    for (name, dial_config) in config.dials {
         let dial = dials_by_index
-            .remove(&index)
-            .ok_or_else(|| miette::miette!("no dial for index {index}"))?;
+            .remove(&dial_config.index)
+            .ok_or_else(|| miette::miette!("no dial for index {}", dial_config.index))?;
         let dial_manager = DialManager {
             name,
-            metric,
-            update_interval,
+            config: dial_config,
             dial,
-            index,
             backoff: config.retries.backoff_builder(),
             running: running.clone(),
         };
@@ -359,7 +366,7 @@ impl DialManager {
     #[tracing::instrument(
         level = tracing::Level::INFO,
         name = "dial",
-        fields(message = %self.name, index = self.index),
+        fields(message = %self.name, index = self.config.index),
         skip_all
         err(Display),
     )]
@@ -368,8 +375,14 @@ impl DialManager {
         let DialManager {
             dial,
             name,
-            metric,
-            update_interval,
+            config:
+                DialConfig {
+                    metric,
+                    update_interval,
+                    dial_easing,
+                    backlight_easing,
+                    ..
+                },
             backoff,
             mut running,
             ..
@@ -395,10 +408,33 @@ impl DialManager {
             .await
         }
 
+        tracing::info!("setting dial name...");
         retry(&backoff, "set dial name", || dial.set_name(&name)).await?;
 
-        let white = Backlight::new(50, 50, 50)?;
-        retry(&backoff, "set dial backlight", || dial.set_backlight(white)).await?;
+        if let Some(Easing { period_ms, step }) = dial_easing {
+            tracing::info!(?period_ms, %step, "setting dial easing...");
+
+            retry(&backoff, "set dial easing", || {
+                dial.set_dial_easing(period_ms, step)
+            })
+            .await?;
+        }
+
+        if let Some(Easing { period_ms, step }) = backlight_easing {
+            tracing::info!(?period_ms, %step, "setting backlight easing...");
+            retry(&backoff, "set backlight easing", || {
+                dial.set_backlight_easing(period_ms, step)
+            })
+            .await?;
+        }
+
+        let backlight = Backlight::new(50, 50, 50)?;
+        tracing::info!(?backlight, "setting dial backlight...");
+        retry(&backoff, "set dial backlight", || {
+            dial.set_backlight(backlight)
+        })
+        .await?;
+
         if let Some(img) = metric.img_file() {
             retry(&backoff, "set dial image", || {
                 use reqwest::multipart::Part;
@@ -438,7 +474,7 @@ impl DialManager {
                             let percent =
                                 (load.user + load.system + load.interrupt + load.nice) * 100.0;
                             tracing::debug!("CPU Load: {percent}%");
-                            Value::new(percent as u8)?
+                            Percent::new(percent as u8)?
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read load aggregate");
@@ -454,7 +490,7 @@ impl DialManager {
                             let percent_free = free.0 / (total.0 / 100);
                             let percent_used = 100 - percent_free;
                             tracing::debug!("Memory: {percent_used}% used");
-                            Value::new(percent_used as u8)?
+                            Percent::new(percent_used as u8)?
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read memory usage");
@@ -469,7 +505,7 @@ impl DialManager {
                             let percent_free = free.0 / (total.0 / 100);
                             let percent_used = 100 - percent_free;
                             tracing::debug!("Swap: {percent_used}% used");
-                            Value::new(percent_used as u8)?
+                            Percent::new(percent_used as u8)?
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read swap usage");
@@ -482,7 +518,7 @@ impl DialManager {
                     match temp {
                         Ok(temp) => {
                             tracing::debug!("CPU temp: {temp}°C");
-                            Value::new(temp as u8)?
+                            Percent::new(temp as u8)?
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read CPU temp");

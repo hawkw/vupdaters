@@ -18,7 +18,7 @@ pub struct Response<T> {
 pub struct DialInfo {
     pub uid: dial::Id,
     pub dial_name: String,
-    pub value: dial::Value,
+    pub value: dial::Percent,
     pub backlight: dial::Backlight,
     pub image_file: String,
 }
@@ -57,7 +57,7 @@ pub enum Error {
 
     #[error(transparent)]
     #[diagnostic(transparent)]
-    InvalidValue(#[from] dial::ValueError),
+    InvalidValue(#[from] dial::PercentError),
 }
 
 /// The [status] of a response from the VU API server.

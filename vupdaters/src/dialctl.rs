@@ -79,7 +79,7 @@ pub struct SetValues {
     ///
     /// Values must be between 0 and 100.
     #[clap(long, short = 'v')]
-    value: Option<dial::Value>,
+    value: Option<dial::Percent>,
 
     /// Set the dial's background image to the provided image file.
     #[clap(long, value_hint = clap::ValueHint::FilePath)]
@@ -89,19 +89,19 @@ pub struct SetValues {
     ///
     /// Values must be between 0 and 100.
     #[clap(long, short = 'r')]
-    red: Option<dial::Value>,
+    red: Option<dial::Percent>,
 
     /// Set the green value of the dial's backlight to the provided value.
     ///
     /// Values must be between 0 and 100.
     #[clap(long, short = 'g')]
-    green: Option<dial::Value>,
+    green: Option<dial::Percent>,
 
     /// Set the blue value of the dial's backlight to the provided value.
     ///
     /// Values must be between 0 and 100.
     #[clap(long, short = 'b')]
-    blue: Option<dial::Value>,
+    blue: Option<dial::Percent>,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -400,14 +400,14 @@ impl OutputMode {
             } = dial.easing;
             println!("{branch}DIAL EASING:");
             println!("{trunk} {branch}dial step: {}", style.style(dial_step));
-            println!("{trunk} {leaf}dial period: {}", style.style(dial_period));
+            println!("{trunk} {leaf}dial period: {:?}", style.style(dial_period));
             println!("{branch}BACKLIGHT EASING:");
             println!(
                 "{trunk} {branch}backlight step: {}",
                 style.style(backlight_step)
             );
             println!(
-                "{trunk} {leaf}backlight period: {}",
+                "{trunk} {leaf}backlight period: {:?}",
                 style.style(backlight_period)
             );
             println!("{branch}VERSION:");

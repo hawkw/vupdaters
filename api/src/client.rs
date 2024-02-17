@@ -1,11 +1,11 @@
 use crate::{
     api,
-    dial::{self, Id, Value},
+    dial::{self, Id, Percent},
 };
 use core::fmt;
 pub use reqwest::ClientBuilder;
 use reqwest::{header::HeaderValue, IntoUrl, Method, Url};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tracing::Level;
 
 #[derive(Debug, Clone)]
@@ -152,7 +152,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn set(&self, value: Value) -> Result<(), api::Error> {
+    pub async fn set(&self, value: Percent) -> Result<(), api::Error> {
         let rsp = self
             .build_request(Method::GET, "set")?
             .query(&[("value", &value)])
@@ -178,6 +178,63 @@ impl Dial {
                 ("red", &red.to_string()),
                 ("green", &green.to_string()),
                 ("blue", &blue.to_string()),
+            ])
+            .send()
+            .await?;
+        response_json(rsp).await
+    }
+
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        name = "Dial::set_dial_easing",
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
+    pub async fn set_dial_easing(
+        &self,
+        period: std::time::Duration,
+        step: Percent,
+    ) -> Result<(), api::Error> {
+        self.set_easing(
+            self.build_request(Method::GET, "easing/dial")?,
+            period,
+            step,
+        )
+        .await
+    }
+
+    #[tracing::instrument(
+        level = Level::DEBUG,
+        name = "Dial::set_backlight_easing",
+        skip(self),
+        fields(uid = %self.uid),
+        err(Display, level = Level::DEBUG),
+    )]
+    pub async fn set_backlight_easing(
+        &self,
+        period: Duration,
+        step: Percent,
+    ) -> Result<(), api::Error> {
+        self.set_easing(
+            self.build_request(Method::GET, "easing/backlight")?,
+            period,
+            step,
+        )
+        .await
+    }
+
+    async fn set_easing(
+        &self,
+        req: reqwest::RequestBuilder,
+        period: Duration,
+        step: Percent,
+    ) -> Result<(), api::Error> {
+        let rsp = req
+            .query(&[
+                // XXX(eliza): blah
+                ("period", &period.as_millis().to_string()),
+                ("step", &step.to_string()),
             ])
             .send()
             .await?;
