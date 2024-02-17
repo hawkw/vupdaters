@@ -3,6 +3,7 @@ use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
+use tokio::sync::watch;
 use vu_api::{
     client::{Client, Dial},
     dial::{Backlight, Value},
@@ -143,6 +144,7 @@ struct DialManager {
     dial: Dial,
     index: usize,
     backoff: backoff::ExponentialBackoffBuilder,
+    running: watch::Receiver<bool>,
 }
 
 fn default_config_path() -> Utf8PathBuf {
@@ -298,10 +300,11 @@ pub async fn run_daemon(
 ) -> miette::Result<()> {
     // TODO(eliza): handle sighup...
     let mut tasks = tokio::task::JoinSet::new();
+    let (running_tx, running) = watch::channel(true);
 
     if hotplug.enabled {
         #[cfg(all(target_os = "linux", feature = "hotplug"))]
-        tasks.spawn_local(hotplug::run(hotplug));
+        tasks.spawn_local(hotplug::run(hotplug, running_tx));
         #[cfg(all(target_os = "linux", not(feature = "hotplug")))]
         miette::bail!("hotplug support requires `vupdated` to be built with `--features hotplug`!");
         #[cfg(not(target_os = "linux"))]
@@ -341,6 +344,7 @@ pub async fn run_daemon(
             dial,
             index,
             backoff: config.retries.backoff_builder(),
+            running: running.clone(),
         };
         tasks.spawn(dial_manager.run());
     }
@@ -367,6 +371,7 @@ impl DialManager {
             metric,
             update_interval,
             backoff,
+            mut running,
             ..
         } = self;
 
@@ -408,6 +413,15 @@ impl DialManager {
         let mut interval = tokio::time::interval(update_interval);
         let systemstat = systemstat::System::new();
         loop {
+            while !(*running.borrow_and_update()) {
+                tracing::info!("updates paused...");
+                running
+                    .changed()
+                    .await
+                    .into_diagnostic()
+                    .context("watch channel closed")?;
+            }
+
             let value = match metric {
                 Metric::CpuLoad => {
                     let load = match systemstat.cpu_load_aggregate() {
@@ -450,7 +464,6 @@ impl DialManager {
                 }
                 Metric::Swap => {
                     let swap = systemstat.swap();
-                    // tracing::info!("Swap: {mem:?}");
                     match swap {
                         Ok(systemstat::Swap { total, free, .. }) => {
                             let percent_free = free.0 / (total.0 / 100);
