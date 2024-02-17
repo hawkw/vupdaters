@@ -1,18 +1,7 @@
 {
     "build": {},
-    "styles": {
-        "theme": "axolight"
-    },
-    "marketing": {
-        "social": {
-            "twitter_account": "@hawkw"
-        }
-    },
     "components": {
         "changelog": true,
-        "mdbook": {
-            "path": "../docs"
-        },
         "artifacts": {
             "cargo_dist": true,
             "package_managers": {
@@ -21,6 +10,9 @@
                     "nix flake": "nix profile install github:hawkw/vupdaters"
                 }
             }
+        },
+        "mdbook": {
+            "path": "../docs"
         },
         "funding": {
             "yml_path": "../.github/FUNDING.yml"

@@ -1,10 +1,10 @@
-[dials."Swap Usage"]
-index = 3
-metric = "swap"
+# [dials."Swap Usage"]
+# index = 3
+# metric = "swap"
 
-[dials."Swap Usage".update_interval]
-secs = 1
-nanos = 0
+# [dials."Swap Usage".update_interval]
+# secs = 1
+# nanos = 0
 
 [dials."CPU Load"]
 index = 0
@@ -14,18 +14,18 @@ metric = "cpu-load"
 secs = 1
 nanos = 0
 
-[dials."Memory Usage"]
-index = 1
-metric = "mem"
+# [dials."Memory Usage"]
+# index = 1
+# metric = "mem"
 
-[dials."Memory Usage".update_interval]
-secs = 1
-nanos = 0
+# [dials."Memory Usage".update_interval]
+# secs = 1
+# nanos = 0
 
-[dials."CPU Temperature"]
-index = 2
-metric = "cpu-temp"
+# [dials."CPU Temperature"]
+# index = 2
+# metric = "cpu-temp"
 
-[dials."CPU Temperature".update_interval]
-secs = 1
-nanos = 0
+# [dials."CPU Temperature".update_interval]
+# secs = 1
+# nanos = 0

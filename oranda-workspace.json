@@ -1,0 +1,20 @@
+{
+    "workspace": {
+        "name": "vupdaters",
+        "members": [
+            {
+                "slug": "vupdaters",
+                "path": "./vupdaters"
+            }
+        ],
+        "generate_index": false
+    },
+    "styles": {
+        "theme": "dark"
+    },
+    "marketing": {
+        "social": {
+            "twitter_account": "@hawkw"
+        }
+    }
+}
