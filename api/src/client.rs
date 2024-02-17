@@ -174,11 +174,7 @@ impl Dial {
     ) -> Result<(), api::Error> {
         let rsp = self
             .build_request(Method::GET, "backlight")?
-            .query(&[
-                ("red", &red.to_string()),
-                ("green", &green.to_string()),
-                ("blue", &blue.to_string()),
-            ])
+            .query(&[("red", &red), ("green", &green), ("blue", &blue)])
             .send()
             .await?;
         response_json(rsp).await
@@ -231,11 +227,8 @@ impl Dial {
         step: Percent,
     ) -> Result<(), api::Error> {
         let rsp = req
-            .query(&[
-                // XXX(eliza): blah
-                ("period", &period.as_millis().to_string()),
-                ("step", &step.to_string()),
-            ])
+            .query(&[("period", period.as_millis())])
+            .query(&[("step", &step.to_string())])
             .send()
             .await?;
         response_json(rsp).await
