@@ -14,7 +14,7 @@ publish = false
 
 [build-dependencies]
 clap = { workspace = true, features = ["std", "derive", "env"] }
-vupdaters = { path = "../vupdaters" }
+vupdaters = { path = "../vupdaters", default-features = false }
 miette = { workspace = true }
 camino = { workspace = true }
 cargo_metadata = { workspace = true }
