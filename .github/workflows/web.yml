@@ -64,7 +64,7 @@ jobs:
 
       # generate mdBook from CLIs
       - name: Generate mdBook
-        run: cargo build --package docs
+        run: cargo build --package vupdaters-docs
 
       # Install and run oranda (and mdbook)
       # This will write all output to ./public/ (including copying mdbook's output to there)
