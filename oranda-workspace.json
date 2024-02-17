@@ -9,8 +9,11 @@
         ],
         "generate_index": false
     },
+    "build": {
+        "path_prefix": "vupdaters"
+    },
     "styles": {
-        "theme": "dark"
+        "theme": "axodark"
     },
     "marketing": {
         "social": {
