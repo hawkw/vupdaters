@@ -317,11 +317,11 @@ pub async fn run_daemon(
 ) -> miette::Result<()> {
     // TODO(eliza): handle sighup...
     let mut tasks = tokio::task::JoinSet::new();
-    let (running_tx, running) = watch::channel(true);
+    let (_running_tx, running) = watch::channel(true);
 
     if hotplug.enabled {
         #[cfg(all(target_os = "linux", feature = "hotplug"))]
-        tasks.spawn_local(hotplug::run(hotplug, running_tx));
+        tasks.spawn_local(hotplug::run(hotplug, _running_tx));
         #[cfg(all(target_os = "linux", not(feature = "hotplug")))]
         miette::bail!("hotplug support requires `vupdated` to be built with `--features hotplug`!");
         #[cfg(not(target_os = "linux"))]
@@ -457,13 +457,26 @@ impl DialManager {
         let mut interval = tokio::time::interval(update_interval);
         let systemstat = systemstat::System::new();
         loop {
-            while !(*running.borrow_and_update()) {
-                tracing::info!("updates paused...");
-                running
-                    .changed()
-                    .await
-                    .into_diagnostic()
-                    .context("watch channel closed")?;
+            if !(*running.borrow()) {
+                tracing::info!("dial updates paused, waiting to restart...");
+                while !(*running.borrow_and_update()) {
+                    tracing::debug!("updates still paused...");
+                    running
+                        .changed()
+                        .await
+                        .into_diagnostic()
+                        .context("watch channel closed")?;
+                }
+
+                // N.B. that we apparently need to reset the backlight every
+                // time we reconnect to the VU-Server, because it apparently
+                // doesn't persist backlight state when restarted. IDK why.
+                let backlight = Backlight::new(50, 50, 50)?;
+                tracing::info!(?backlight, "setting dial backlight...");
+                retry(&backoff, "set dial backlight", || {
+                    dial.set_backlight(backlight)
+                })
+                .await?;
             }
 
             let value = match metric {
