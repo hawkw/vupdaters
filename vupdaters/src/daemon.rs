@@ -634,7 +634,7 @@ impl DialManager {
                     let battery = systemstat.battery_life();
                     match battery {
                         Ok(battery) => {
-                            let remaining = battery.remaining_capacity;
+                            let remaining = battery.remaining_capacity * 100.0;
                             tracing::debug!("Battery: {remaining}% remaining");
                             Percent::new(remaining as u8)?
                         }
