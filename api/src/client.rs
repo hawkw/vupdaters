@@ -228,7 +228,7 @@ impl Dial {
     ) -> Result<(), api::Error> {
         let rsp = req
             .query(&[("period", period.as_millis())])
-            .query(&[("step", &step.to_string())])
+            .query(&[("step", step)])
             .send()
             .await?;
         response_json(rsp).await
