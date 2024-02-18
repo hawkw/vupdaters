@@ -37,6 +37,23 @@ pub enum NewClientError {
     BuildClient(#[source] reqwest::Error),
 }
 
+#[derive(thiserror::Error, Debug, miette::Diagnostic)]
+#[error("JSON deserialization error")]
+#[diagnostic(code(vu_api::client::JsonError))]
+pub struct JsonError {
+    // The Source that we're gonna be printing snippets out of.
+    // This can be a String if you don't have or care about file names.
+    #[source_code]
+    src: miette::NamedSource<String>,
+
+    // Snippets and highlights can be included in the diagnostic!
+    #[label("here")]
+    span: miette::SourceSpan,
+
+    #[source]
+    error: serde_json::Error,
+}
+
 impl Client {
     pub fn new(key: String, base_url: impl reqwest::IntoUrl) -> Result<Self, NewClientError> {
         static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -283,7 +300,17 @@ async fn response_json<T: serde::de::DeserializeOwned>(
 ) -> Result<T, api::Error> {
     tracing::debug!(rsp.http_status = %rsp.status(), "received response");
     let rsp = rsp.error_for_status()?;
-    let json = rsp.json::<api::Response<T>>().await?;
+    let body = rsp.bytes().await?;
+    let json = match serde_json::from_slice::<api::Response<T>>(&body) {
+        Ok(json) => json,
+        Err(error) => {
+            let src = String::from_utf8_lossy(&body).to_string();
+            let start = miette::SourceOffset::from_location(&src, error.line(), error.column());
+            let span = miette::SourceSpan::new(start, 1);
+            let src = miette::NamedSource::new("response body", src).with_language("JSON");
+            return Err(JsonError { src, span, error }.into());
+        }
+    };
     if json.status != api::Status::Ok {
         return Err(api::Error::Server(json.message));
     }

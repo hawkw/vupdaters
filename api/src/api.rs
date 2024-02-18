@@ -1,4 +1,4 @@
-use crate::dial;
+use crate::{client, dial};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt, str::FromStr};
@@ -46,6 +46,11 @@ pub enum Error {
         status: reqwest::StatusCode,
         message: String,
     },
+
+    #[cfg(feature = "client")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DecodeJson(#[from] client::JsonError),
 
     #[error("VU-Server API error: {}", .0)]
     #[diagnostic(code(vu_api::errors::server_error))]
