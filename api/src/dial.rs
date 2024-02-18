@@ -186,7 +186,7 @@ impl<'de> de::Visitor<'de> for IntsAreSometimesStrings {
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(
             formatter,
-            "an integer (or the string representatin thereof)"
+            "a positive integer (or the string representation thereof)"
         )
     }
 
@@ -216,6 +216,38 @@ impl<'de> de::Visitor<'de> for IntsAreSometimesStrings {
         E: de::Error,
     {
         Ok(v)
+    }
+
+    fn visit_i8<E>(self, v: i8) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_i64(v as i64)
+    }
+
+    fn visit_i16<E>(self, v: i16) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_i64(v as i64)
+    }
+
+    fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        self.visit_i64(v as i64)
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        if v < 0 {
+            return Err(de::Error::invalid_value(de::Unexpected::Signed(v), &self));
+        }
+
+        Ok(v as u64)
     }
 
     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
