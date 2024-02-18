@@ -1,6 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
@@ -64,7 +65,10 @@ pub enum Metric {
     /// Display memory usage, as a percentage of total memory.
     Mem,
     /// Display disk usage as a percentage of total disk space.
-    Disk,
+    DiskUsage,
+    // /// Display disk usage for a specific filesystem.
+    // #[clap(skip)]
+    // FsUsage { filesystem: String },
     /// Display CPU temperature.
     CpuTemp,
     /// Display swap usage, as a percentage of total swap space.
@@ -260,14 +264,15 @@ async fn gen_config(
 }
 
 impl Metric {
-    fn dial_name(&self) -> &'static str {
+    fn dial_name(&self) -> String {
         match self {
-            Metric::Battery => "Battery Remaining",
-            Metric::Disk => "Disk Usage",
-            Metric::CpuLoad => "CPU Load",
-            Metric::CpuTemp => "CPU Temperature",
-            Metric::Swap => "Swap Usage",
-            Metric::Mem => "Memory Usage",
+            Metric::Battery => "Battery Remaining".to_owned(),
+            Metric::DiskUsage => "Disk Usage".to_owned(),
+            // Metric::FsUsage { filesystem } => format!("{} Usage", filesystem),
+            Metric::CpuLoad => "CPU Load".to_owned(),
+            Metric::CpuTemp => "CPU Temperature".to_owned(),
+            Metric::Swap => "Swap Usage".to_owned(),
+            Metric::Mem => "Memory Usage".to_owned(),
         }
     }
 
@@ -284,16 +289,16 @@ impl Metric {
         static CPU_LOAD_IMG: ImgFile = imgfile!("cpu_load.png");
         static CPU_TEMP_IMG: ImgFile = imgfile!("cpu_temp.png");
         static SWAP_IMG: ImgFile = imgfile!("swap.png");
+        static DISK_IMG: ImgFile = imgfile!("disk.png");
+        static BATT_IMG: ImgFile = imgfile!("battery.png");
 
         match self {
             Metric::Swap => Some(&SWAP_IMG),
             Metric::CpuLoad => Some(&CPU_LOAD_IMG),
             Metric::CpuTemp => Some(&CPU_TEMP_IMG),
             Metric::Mem => Some(&MEM_IMG),
-            ref d => {
-                tracing::warn!("skipping image upload for unsupported Metric {d:?}");
-                None
-            }
+            Metric::DiskUsage => Some(&DISK_IMG),
+            Metric::Battery => Some(&BATT_IMG),
         }
     }
 }
@@ -367,6 +372,23 @@ pub async fn run_daemon(
     Ok(())
 }
 
+// #[derive(thiserror::Error, Debug, miette::Diagnostic)]
+// #[error("TOML syntax error")]
+// #[diagnostic(code(vupdaters::config::toml_syntax_error))]
+// struct TomlError {
+//     // The Source that we're gonna be printing snippets out of.
+//     // This can be a String if you don't have or care about file names.
+//     #[source_code]
+//     src: miette::NamedSource<String>,
+
+//     // Snippets and highlights can be included in the diagnostic!
+//     #[label("invalid syntax")]
+//     span: Option<miette::SourceSpan>,
+
+//     #[source]
+//     error: toml::de::Error,
+// }
+
 impl Config {
     fn load(path: impl AsRef<Utf8Path>) -> miette::Result<Self> {
         let path = path.as_ref();
@@ -378,6 +400,11 @@ impl Config {
         toml::from_str(&file)
             .into_diagnostic()
             .with_context(|| format!("failed to parse config file '{path}'"))
+        // .map_err(|error| {
+        //     let src = miette::NamedSource::new(path, file).with_language("TOML");
+        //     let span = error.span().map(miette::SourceSpan::from);
+        //     TomlError { src, span, error }.into()
+        // })
     }
 
     async fn spawn_dial_managers(
@@ -511,6 +538,7 @@ impl DialManager {
         tracing::info!("updating dial with {metric:?} every {update_interval:?}");
         let mut interval = tokio::time::interval(update_interval);
         let systemstat = systemstat::System::new();
+
         loop {
             if !(*running.borrow()) {
                 tracing::info!("dial updates paused, waiting to restart...");
@@ -601,6 +629,46 @@ impl DialManager {
                             continue;
                         }
                     }
+                }
+                Metric::Battery => {
+                    let battery = systemstat.battery_life();
+                    match battery {
+                        Ok(battery) => {
+                            let remaining = battery.remaining_capacity;
+                            tracing::debug!("Battery: {remaining}% remaining");
+                            Percent::new(remaining as u8)?
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "failed to read battery status");
+                            continue;
+                        }
+                    }
+                }
+                Metric::DiskUsage => {
+                    let mounts = systemstat.mounts();
+                    let filesystems = match mounts {
+                        Ok(mounts) => mounts,
+                        Err(error) => {
+                            tracing::warn!(%error, "failed to read mounts");
+                            continue;
+                        }
+                    };
+                    let (total, free) = filesystems.iter().fold((0, 0), |(total, free), fs| {
+                        let total = total + fs.total.as_u64();
+                        let free = free + fs.free.as_u64();
+                        tracing::trace!(
+                            "filesystem {} has {} bytes free, {} bytes total",
+                            fs.fs_mounted_on,
+                            fs.free,
+                            fs.total
+                        );
+                        (total, free)
+                    });
+
+                    let percent_free = free / (total / 100);
+                    let percent_used = 100 - percent_free;
+                    tracing::debug!("Disk: {percent_used}% used");
+                    Percent::new(percent_used as u8)?
                 }
                 _ => miette::bail!("unsupported Metric type {metric:?}"),
             };
