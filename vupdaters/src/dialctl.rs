@@ -1,3 +1,4 @@
+use crate::MultiError;
 use camino::Utf8PathBuf;
 use miette::{Context, IntoDiagnostic};
 use std::fmt;
@@ -126,15 +127,6 @@ pub enum OutputMode {
     Text,
     Json,
     Ascii,
-}
-
-#[derive(miette::Diagnostic, Debug, thiserror::Error)]
-#[error("{}", .msg)]
-#[diagnostic()]
-struct MultiError {
-    msg: &'static str,
-    #[related]
-    errors: Vec<miette::Report>,
 }
 
 impl Args {
@@ -523,18 +515,4 @@ fn print_backlight(
     println!("{trunk} {branch}red: {}", style.style(red));
     println!("{trunk} {branch}green: {}", style.style(green));
     println!("{trunk} {leaf}blue: {}", style.style(blue));
-}
-
-impl MultiError {
-    fn from_vec(errors: Vec<miette::Report>, msg: &'static str) -> miette::Result<()> {
-        if errors.is_empty() {
-            return Ok(());
-        }
-
-        if errors.len() == 1 {
-            return Err(errors.into_iter().next().unwrap());
-        }
-
-        Err(MultiError { msg, errors }.into())
-    }
 }

@@ -1,7 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
-use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
@@ -10,6 +9,8 @@ use vu_api::{
     client::{Client, Dial},
     dial::{Backlight, Percent},
 };
+
+use crate::MultiError;
 
 #[cfg(all(target_os = "linux", feature = "hotplug"))]
 mod hotplug;
@@ -461,6 +462,8 @@ impl DialManager {
         err(Display),
     )]
     async fn run(self) -> miette::Result<()> {
+        const MAX_ERRORS: usize = 4;
+
         use systemstat::Platform;
         let DialManager {
             dial,
@@ -537,6 +540,8 @@ impl DialManager {
 
         tracing::info!("updating dial with {metric:?} every {update_interval:?}");
         let mut interval = tokio::time::interval(update_interval);
+        let mut systemstat_errs =
+            MultiError::with_max_errors("reading metric data failed 4 times in a row", MAX_ERRORS);
         let systemstat = systemstat::System::new();
 
         loop {
@@ -564,16 +569,17 @@ impl DialManager {
 
             let value = match metric {
                 Metric::CpuLoad => {
-                    let load = match systemstat.cpu_load_aggregate() {
+                    let load = match systemstat.cpu_load_aggregate().into_diagnostic() {
                         Ok(load) => load,
                         Err(error) => {
                             tracing::warn!(%error, "failed to start load aggregate measurement");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     };
                     interval.tick().await;
 
-                    match load.done() {
+                    match load.done().into_diagnostic() {
                         Ok(load) => {
                             let percent =
                                 (load.user + load.system + load.interrupt + load.nice) * 100.0;
@@ -582,12 +588,13 @@ impl DialManager {
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read load aggregate");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     }
                 }
                 Metric::Mem => {
-                    let mem = systemstat.memory();
+                    let mem = systemstat.memory().into_diagnostic();
                     // tracing::info!("Memory: {mem:?}");
                     match mem {
                         Ok(systemstat::Memory { total, free, .. }) => {
@@ -598,12 +605,13 @@ impl DialManager {
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read memory usage");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     }
                 }
                 Metric::Swap => {
-                    let swap = systemstat.swap();
+                    let swap = systemstat.swap().into_diagnostic();
                     match swap {
                         Ok(systemstat::Swap { total, free, .. }) => {
                             let percent_free = free.0 / (total.0 / 100);
@@ -613,12 +621,13 @@ impl DialManager {
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read swap usage");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     }
                 }
                 Metric::CpuTemp => {
-                    let temp = systemstat.cpu_temp();
+                    let temp = systemstat.cpu_temp().into_diagnostic();
                     match temp {
                         Ok(temp) => {
                             tracing::debug!("CPU temp: {temp}°C");
@@ -631,7 +640,7 @@ impl DialManager {
                     }
                 }
                 Metric::Battery => {
-                    let battery = systemstat.battery_life();
+                    let battery = systemstat.battery_life().into_diagnostic();
                     match battery {
                         Ok(battery) => {
                             let remaining = battery.remaining_capacity * 100.0;
@@ -640,16 +649,18 @@ impl DialManager {
                         }
                         Err(error) => {
                             tracing::warn!(%error, "failed to read battery status");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     }
                 }
                 Metric::DiskUsage => {
-                    let mounts = systemstat.mounts();
+                    let mounts = systemstat.mounts().into_diagnostic();
                     let filesystems = match mounts {
                         Ok(mounts) => mounts,
                         Err(error) => {
                             tracing::warn!(%error, "failed to read mounts");
+                            systemstat_errs.push_error(error)?;
                             continue;
                         }
                     };
@@ -670,11 +681,11 @@ impl DialManager {
                     tracing::debug!("Disk: {percent_used}% used");
                     Percent::new(percent_used as u8)?
                 }
-                _ => miette::bail!("unsupported Metric type {metric:?}"),
             };
             retry(&backoff, "set value", || dial.set(value))
                 .await
                 .with_context(|| format!("failed to set value for {name} to {value}"))?;
+            systemstat_errs.clear();
             if metric != Metric::CpuLoad {
                 interval.tick().await;
             }
