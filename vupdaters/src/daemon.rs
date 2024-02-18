@@ -373,23 +373,6 @@ pub async fn run_daemon(
     Ok(())
 }
 
-// #[derive(thiserror::Error, Debug, miette::Diagnostic)]
-// #[error("TOML syntax error")]
-// #[diagnostic(code(vupdaters::config::toml_syntax_error))]
-// struct TomlError {
-//     // The Source that we're gonna be printing snippets out of.
-//     // This can be a String if you don't have or care about file names.
-//     #[source_code]
-//     src: miette::NamedSource<String>,
-
-//     // Snippets and highlights can be included in the diagnostic!
-//     #[label("invalid syntax")]
-//     span: Option<miette::SourceSpan>,
-
-//     #[source]
-//     error: toml::de::Error,
-// }
-
 impl Config {
     fn load(path: impl AsRef<Utf8Path>) -> miette::Result<Self> {
         let path = path.as_ref();
@@ -401,11 +384,6 @@ impl Config {
         toml::from_str(&file)
             .into_diagnostic()
             .with_context(|| format!("failed to parse config file '{path}'"))
-        // .map_err(|error| {
-        //     let src = miette::NamedSource::new(path, file).with_language("TOML");
-        //     let span = error.span().map(miette::SourceSpan::from);
-        //     TomlError { src, span, error }.into()
-        // })
     }
 
     async fn spawn_dial_managers(
@@ -415,8 +393,9 @@ impl Config {
         tasks: &mut task::JoinSet<miette::Result<()>>,
     ) -> miette::Result<()> {
         let mut dials_by_index = HashMap::new();
-
-        for (dial, _) in client.list_dials().await? {
+        let backoff = self.retries.backoff_builder();
+        let dials = retry(&backoff, "list dials", || client.list_dials()).await?;
+        for (dial, _) in dials {
             let index = dial
                 .status()
                 .await
@@ -482,24 +461,6 @@ impl DialManager {
         } = self;
 
         tracing::info!("configuring dial...");
-
-        async fn retry<F>(
-            backoff: &backoff::ExponentialBackoffBuilder,
-            name: &'static str,
-            f: impl Fn() -> F,
-        ) -> Result<(), vu_api::api::Error>
-        where
-            F: std::future::Future<Output = Result<(), vu_api::api::Error>>,
-        {
-            backoff::future::retry_notify(
-                backoff.build(),
-                || f().map_err(backoff_error),
-                |error, retry_after| {
-                    tracing::warn!(%error, ?retry_after, "failed to {name}, retrying...");
-                },
-            )
-            .await
-        }
 
         tracing::info!("setting dial name...");
         retry(&backoff, "set dial name", || dial.set_name(&name)).await?;
@@ -691,6 +652,24 @@ impl DialManager {
             }
         }
     }
+}
+
+async fn retry<F, T>(
+    backoff: &backoff::ExponentialBackoffBuilder,
+    name: &'static str,
+    f: impl Fn() -> F,
+) -> Result<T, vu_api::api::Error>
+where
+    F: std::future::Future<Output = Result<T, vu_api::api::Error>>,
+{
+    backoff::future::retry_notify(
+        backoff.build(),
+        || f().map_err(backoff_error),
+        |error, retry_after| {
+            tracing::warn!(%error, ?retry_after, "failed to {name}, retrying...");
+        },
+    )
+    .await
 }
 
 // === impl RetryConfig ===
