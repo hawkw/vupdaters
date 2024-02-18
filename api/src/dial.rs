@@ -1,7 +1,5 @@
-use serde::{Deserialize, Serialize};
-use serde_with::{
-    serde_as, DeserializeFromStr, DisplayFromStr, DurationMilliSeconds, SerializeDisplay,
-};
+use serde::{de, Deserialize, Serialize};
+use serde_with::{serde_as, DeserializeFromStr, DisplayFromStr, SerializeDisplay};
 use std::{fmt, str::FromStr, sync::Arc, time::Duration};
 use thiserror::Error;
 
@@ -35,14 +33,12 @@ pub struct Status {
 pub struct Easing {
     pub backlight_step: Percent,
 
-    #[serde(rename = "backlight_period", alias = "backlight_period_ms")]
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
+    #[serde(alias = "backlight_period_ms", deserialize_with = "deserialize_millis")]
     pub backlight_period: Duration,
 
     pub dial_step: Percent,
 
-    #[serde(alias = "dial_period_ms")]
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
+    #[serde(alias = "dial_period_ms", deserialize_with = "deserialize_millis")]
     pub dial_period: Duration,
 }
 
@@ -122,13 +118,24 @@ impl Percent {
     }
 }
 
+fn deserialize_millis<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let millis = deserializer.deserialize_any(IntsAreSometimesStrings)?;
+    Ok(Duration::from_millis(millis))
+}
+
 impl<'de> Deserialize<'de> for Percent {
     fn deserialize<D>(deserializer: D) -> Result<Percent, D::Error>
     where
-        D: serde::de::Deserializer<'de>,
+        D: de::Deserializer<'de>,
     {
-        let value = u8::deserialize(deserializer)?;
-        Percent::new(value).map_err(serde::de::Error::custom)
+        let int = deserializer.deserialize_any(IntsAreSometimesStrings)?;
+        u8::try_from(int)
+            .map_err(serde::de::Error::custom)?
+            .try_into()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -165,5 +172,57 @@ impl FromStr for Percent {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let value = s.trim().trim_end_matches('%').parse()?;
         Ok(Percent::new(value)?)
+    }
+}
+
+/// Workaround for a Really Annoying bug in VU-Server where integers in JSON
+/// responses are sometimes sent as strings, and sometimes sent as actual JSON
+/// integers, with (apparently) no rhyme or reason.
+struct IntsAreSometimesStrings;
+
+impl<'de> de::Visitor<'de> for IntsAreSometimesStrings {
+    type Value = u64;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "an integer (or the string representatin thereof)"
+        )
+    }
+
+    fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(v as u64)
+    }
+
+    fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(v as u64)
+    }
+
+    fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(v as u64)
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(v)
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        s.parse::<u64>()
+            .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(s), &self))
     }
 }
