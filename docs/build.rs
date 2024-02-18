@@ -72,7 +72,11 @@ fn render_command(
     "
     .to_owned();
 
-    let mut cmd = cmd.help_template(help_template).max_term_width(80);
+    let mut cmd = cmd
+        .help_template(help_template)
+        .max_term_width(80)
+        // .flatten_help(true);
+        ;
 
     let cmd_docs = cmd.render_long_help();
     write!(&mut main_docs, "\n\n## command-line usage\n\n{cmd_docs}\n").into_diagnostic()?;
@@ -121,14 +125,41 @@ fn render_command(
 
     let submd_path = md_path.join(&name);
     let subout_path = out_path.join(&name);
-
+    let mut rendered_paths = std::collections::HashSet::new();
     for subcmd in cmd.get_subcommands() {
-        if subcmd.get_name() == "help" {
+        let name = subcmd.get_name();
+        if name == "help" {
             continue;
         }
         render_command(subcmd.clone(), &submd_path, &subout_path)
             .with_context(|| format!("failed to render docs for {md_path}"))?;
+        rendered_paths.insert(format!("{name}.md"));
     }
+
+    if submd_path.exists() {
+        for file in fs::read_dir(&submd_path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to read {submd_path}"))?
+        {
+            let file = file
+                .into_diagnostic()
+                .with_context(|| format!("failed to read {submd_path}"))?;
+            let file_name = file.file_name();
+            let file_name = file_name.to_string_lossy();
+            let path = file.path();
+            if file_name.ends_with(".md") {
+                if rendered_paths.contains(file_name.as_ref()) {
+                    continue;
+                }
+                let out_file = out_path.join(file_name.as_ref());
+                println!("cargo:rerun-if-changed={}", path.display());
+                fs::copy(&path, &out_file)
+                    .into_diagnostic()
+                    .with_context(|| format!("failed to copy {} to {out_file}", path.display()))?;
+            }
+        }
+    }
+
     Ok(())
 }
 

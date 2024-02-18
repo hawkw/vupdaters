@@ -13,6 +13,8 @@ reconnected.
 
 To work around this, `vupdated` implements a brute-force solution to add USB
 hotplug support to `VU-Server`. If hotplug support is enabled, `vupdated` will
-watch for USB
+watch for USB devices being connected or disconnected from the system. When a
+device that appears to be the VU-1 dials is connected, `vupdated` will restart
+restart VU-Server, if it is running as a systemd service.
 
 [no-hotplug]: https://github.com/SasaKaranovic/VU-Server/issues/10
