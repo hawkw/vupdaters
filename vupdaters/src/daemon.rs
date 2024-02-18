@@ -4,7 +4,7 @@ use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
-use tokio::sync::watch;
+use tokio::{sync::watch, task};
 use vu_api::{
     client::{Client, Dial},
     dial::{Backlight, Percent},
@@ -12,6 +12,7 @@ use vu_api::{
 
 #[cfg(all(target_os = "linux", feature = "hotplug"))]
 mod hotplug;
+mod signal;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -188,15 +189,7 @@ impl Args {
             }
             None => {
                 tracing::info!("starting daemon...");
-                let config = {
-                    let file = std::fs::read_to_string(&config_path)
-                        .into_diagnostic()
-                        .with_context(|| format!("failed to read config file {config_path}"))?;
-                    toml::from_str(&file)
-                        .into_diagnostic()
-                        .with_context(|| format!("failed to parse config file {config_path}"))?
-                };
-                run_daemon(client, config, hotplug).await?;
+                run_daemon(client, config_path, hotplug).await?;
             }
         }
 
@@ -312,62 +305,124 @@ struct ImgFile {
 
 pub async fn run_daemon(
     client: Client,
-    config: Config,
+    config_path: impl AsRef<Utf8Path>,
     hotplug: HotplugSettings,
 ) -> miette::Result<()> {
-    // TODO(eliza): handle sighup...
-    let mut tasks = tokio::task::JoinSet::new();
+    use signal::{SignalAction, SignalListener};
+
+    let mut tasks = task::JoinSet::new();
+    let mut signals = SignalListener::new()?;
+
     let (_running_tx, running) = watch::channel(true);
 
     if hotplug.enabled {
         #[cfg(all(target_os = "linux", feature = "hotplug"))]
-        tasks.spawn_local(hotplug::run(hotplug, _running_tx));
+        task::spawn_local(hotplug::run(hotplug, _running_tx));
         #[cfg(all(target_os = "linux", not(feature = "hotplug")))]
         miette::bail!("hotplug support requires `vupdated` to be built with `--features hotplug`!");
         #[cfg(not(target_os = "linux"))]
         miette::bail!("hotplug support is currently only available on Linux!");
-    }
+    };
 
-    let mut dials_by_index = HashMap::new();
+    let config = Config::load(&config_path)?;
+    config
+        .spawn_dial_managers(&client, &running, &mut tasks)
+        .await
+        .context("failed to spawn dial managers")?;
 
-    for (dial, _) in client.list_dials().await? {
-        let index = dial
-            .status()
-            .await
-            .with_context(|| format!("failed to get status for {}", dial.id()))?
-            .index;
-        dials_by_index.insert(index, dial);
-    }
-    if dials_by_index.len() < config.dials.len() {
-        tracing::warn!("not enough dials for all dials in config file!");
-    }
+    loop {
+        tokio::select! {
+            signal = signals.next_signal() => {
+                match signal {
+                    SignalAction::Reload => {
+                        tracing::info!("Received SIGHUP, reloading config...");
+                        tasks.shutdown().await;
 
-    let mut dials_spawned = 0;
-    for (name, dial_config) in config.dials {
-        if let Some(dial) = dials_by_index.remove(&dial_config.index) {
-            let dial_manager = DialManager {
-                name,
-                config: dial_config,
-                dial,
-                backoff: config.retries.backoff_builder(),
-                running: running.clone(),
-            };
-            tasks.spawn(dial_manager.run());
-            dials_spawned += 1;
-        } else {
-            tracing::warn!(
-                "no dial found for index {}, skipping {name}...",
-                dial_config.index
-            );
+                        let config = Config::load(&config_path)?;
+                        config
+                            .spawn_dial_managers(&client, &running, &mut tasks)
+                            .await
+                            .context("failed to spawn dial managers")?;
+                    }
+                    SignalAction::Shutdown => {
+                        tracing::info!("Received SIGINT, shutting down");
+                        break;
+                    }
+                }
+            }
+            join = tasks.join_next() => {
+                match join {
+                    Some(error) => {
+                        error.into_diagnostic()
+                            .context("a dial manager task panicked")?
+                            .context("a dial manager task failed")?;
+                        break;
+                    },
+                    None => break,
+                }
+            }
         }
     }
 
-    miette::ensure!(dials_spawned > 0, "no dials are connected!");
-
-    while let Some(next) = tasks.join_next().await {
-        next.into_diagnostic()?.context("a task failed!")?;
-    }
     Ok(())
+}
+
+impl Config {
+    fn load(path: impl AsRef<Utf8Path>) -> miette::Result<Self> {
+        let path = path.as_ref();
+        tracing::info!("loading config from {path}...");
+
+        let file = std::fs::read_to_string(path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to read config file '{path}'"))?;
+        toml::from_str(&file)
+            .into_diagnostic()
+            .with_context(|| format!("failed to parse config file '{path}'"))
+    }
+
+    async fn spawn_dial_managers(
+        &self,
+        client: &Client,
+        running: &watch::Receiver<bool>,
+        tasks: &mut task::JoinSet<miette::Result<()>>,
+    ) -> miette::Result<()> {
+        let mut dials_by_index = HashMap::new();
+
+        for (dial, _) in client.list_dials().await? {
+            let index = dial
+                .status()
+                .await
+                .with_context(|| format!("failed to get status for {}", dial.id()))?
+                .index;
+            dials_by_index.insert(index, dial);
+        }
+        if dials_by_index.len() < self.dials.len() {
+            tracing::warn!("not enough dials for all dials in config file!");
+        }
+
+        let mut dials_spawned = 0;
+        for (name, config) in &self.dials {
+            if let Some(dial) = dials_by_index.remove(&config.index) {
+                let dial_manager = DialManager {
+                    name: name.clone(),
+                    config: config.clone(),
+                    dial,
+                    backoff: self.retries.backoff_builder(),
+                    running: running.clone(),
+                };
+                tasks.spawn(dial_manager.run());
+                dials_spawned += 1;
+            } else {
+                tracing::warn!(
+                    "no dial found for index {}, skipping {name}...",
+                    config.index
+                );
+            }
+        }
+
+        miette::ensure!(dials_spawned > 0, "no dials are connected!");
+        Ok(())
+    }
 }
 
 impl DialManager {
