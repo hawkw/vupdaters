@@ -658,9 +658,9 @@ async fn retry<F, T>(
     backoff: &backoff::ExponentialBackoffBuilder,
     name: &'static str,
     f: impl Fn() -> F,
-) -> Result<T, vu_api::api::Error>
+) -> Result<T, vu_api::client::Error>
 where
-    F: std::future::Future<Output = Result<T, vu_api::api::Error>>,
+    F: std::future::Future<Output = Result<T, vu_api::client::Error>>,
 {
     backoff::future::retry_notify(
         backoff.build(),
@@ -715,13 +715,12 @@ impl RetryConfig {
     }
 }
 
-fn backoff_error(error: vu_api::api::Error) -> backoff::Error<vu_api::api::Error> {
-    use vu_api::api::Error;
+fn backoff_error(error: vu_api::client::Error) -> backoff::Error<vu_api::client::Error> {
+    use vu_api::client::Error;
     match error {
-        error @ Error::BuildUrl(_)
-        | error @ Error::BuildRequest(_)
-        | error @ Error::InvalidBacklight(_)
-        | error @ Error::InvalidValue(_) => backoff::Error::permanent(error),
+        error @ Error::BuildUrl(_) | error @ Error::BuildRequest(_) => {
+            backoff::Error::permanent(error)
+        }
         error => backoff::Error::transient(error),
     }
 }

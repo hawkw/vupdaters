@@ -72,8 +72,8 @@ pub enum PercentParseError {
 
 #[derive(Debug, Error, miette::Diagnostic)]
 #[error("invalid {} value: {}", .field, .value.0)]
-#[help = "red, green, and blue Percents must be in the range 0-100"]
-#[diagnostic(code(vu_api::errors::backlight_error))]
+#[help = "red, green, and blue values must be in the range 0-100"]
+#[diagnostic(code(vu_api::Dial::BacklightEerror))]
 pub struct BacklightError {
     #[source]
     #[diagnostic_source]

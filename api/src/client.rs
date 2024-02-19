@@ -6,6 +6,7 @@ use core::fmt;
 pub use reqwest::ClientBuilder;
 use reqwest::{header::HeaderValue, IntoUrl, Method, Url};
 use std::{sync::Arc, time::Duration};
+use thiserror::Error;
 use tracing::Level;
 
 #[derive(Debug, Clone)]
@@ -29,15 +30,18 @@ pub(crate) struct Config {
     pub(crate) base_url: Url,
 }
 
-#[derive(Debug, thiserror::Error, miette::Diagnostic)]
+#[derive(Debug, Error, miette::Diagnostic)]
 pub enum NewClientError {
     #[error("invalid VU-Server base URL: {0}")]
+    #[diagnostic(code(vu_api::client::NewClientError::InvalidBaseUrl))]
     InvalidBaseUrl(#[source] reqwest::Error),
     #[error("failed to build reqwest client: {0}")]
+    #[diagnostic(code(vu_api::client::NewClientError::InvalidBaseUrl))]
     BuildClient(#[source] reqwest::Error),
 }
 
-#[derive(thiserror::Error, Debug, miette::Diagnostic)]
+/// Error indicating that a JSON response could not be deserialized.
+#[derive(Debug, Error, miette::Diagnostic)]
 #[error("JSON deserialization error")]
 #[diagnostic(code(vu_api::client::JsonError))]
 pub struct JsonError {
@@ -52,6 +56,42 @@ pub struct JsonError {
 
     #[source]
     error: serde_json::Error,
+}
+
+#[derive(Debug, Error, miette::Diagnostic)]
+pub enum Error {
+    #[error("failed to build request: {0}")]
+    #[diagnostic(code(vu_api::client::Error::BuildRequest))]
+    BuildRequest(#[from] http::Error),
+
+    #[error(transparent)]
+    #[diagnostic(code(vu_api::client::Error::BuildUrl))]
+    BuildUrl(#[from] url::ParseError),
+
+    #[cfg(feature = "client")]
+    #[error(transparent)]
+    #[diagnostic(code(vu_api::client::Error::Request))]
+    Request(#[from] reqwest::Error),
+
+    /// The server returned invalid JSON.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DecodeJson(#[from] JsonError),
+
+    /// The server returned an HTTP error
+    #[error("VU-Server returned {}: {}", .status, .message)]
+    #[diagnostic(code(vu_Error::ServerHttp))]
+    ServerHttp {
+        /// The HTTP status returned by the server.
+        status: reqwest::StatusCode,
+        /// The message returned in the server's HTTP response.
+        message: String,
+    },
+
+    /// The server returned a JSON response with `"status:": "fail"`.
+    #[error("VU-Server API error: {}", .0)]
+    #[diagnostic(code(vu_api::client::Error::Server))]
+    Server(String),
 }
 
 impl Client {
@@ -77,7 +117,7 @@ impl Client {
         skip(self),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn list_dials(&self) -> Result<Vec<(Dial, api::DialInfo)>, api::Error> {
+    pub async fn list_dials(&self) -> Result<Vec<(Dial, api::DialInfo)>, Error> {
         let url = self.cfg.base_url.join("/api/v0/dial/list")?;
         let response = self
             .client
@@ -114,11 +154,7 @@ impl Client {
 }
 
 impl Dial {
-    fn build_request(
-        &self,
-        method: Method,
-        path: &str,
-    ) -> Result<reqwest::RequestBuilder, api::Error> {
+    fn build_request(&self, method: Method, path: &str) -> Result<reqwest::RequestBuilder, Error> {
         let Client {
             ref cfg,
             ref client,
@@ -141,7 +177,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn status(&self) -> Result<dial::Status, api::Error> {
+    pub async fn status(&self) -> Result<dial::Status, Error> {
         let response = self.build_request(Method::GET, "status")?.send().await?;
         response_json(response).await
     }
@@ -153,7 +189,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn set_name(&self, name: &str) -> Result<(), api::Error> {
+    pub async fn set_name(&self, name: &str) -> Result<(), Error> {
         let rsp = self
             .build_request(Method::GET, "name")?
             .query(&[("name", name)])
@@ -169,7 +205,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn set(&self, value: Percent) -> Result<(), api::Error> {
+    pub async fn set(&self, value: Percent) -> Result<(), Error> {
         let rsp = self
             .build_request(Method::GET, "set")?
             .query(&[("value", &value)])
@@ -188,7 +224,7 @@ impl Dial {
     pub async fn set_backlight(
         &self,
         dial::Backlight { red, green, blue }: dial::Backlight,
-    ) -> Result<(), api::Error> {
+    ) -> Result<(), Error> {
         let rsp = self
             .build_request(Method::GET, "backlight")?
             .query(&[("red", &red), ("green", &green), ("blue", &blue)])
@@ -208,7 +244,7 @@ impl Dial {
         &self,
         period: std::time::Duration,
         step: Percent,
-    ) -> Result<(), api::Error> {
+    ) -> Result<(), Error> {
         self.set_easing(
             self.build_request(Method::GET, "easing/dial")?,
             period,
@@ -224,11 +260,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn set_backlight_easing(
-        &self,
-        period: Duration,
-        step: Percent,
-    ) -> Result<(), api::Error> {
+    pub async fn set_backlight_easing(&self, period: Duration, step: Percent) -> Result<(), Error> {
         self.set_easing(
             self.build_request(Method::GET, "easing/backlight")?,
             period,
@@ -242,7 +274,7 @@ impl Dial {
         req: reqwest::RequestBuilder,
         period: Duration,
         step: Percent,
-    ) -> Result<(), api::Error> {
+    ) -> Result<(), Error> {
         let rsp = req
             .query(&[("period", period.as_millis())])
             .query(&[("step", step)])
@@ -263,7 +295,7 @@ impl Dial {
         filename: &str,
         part: reqwest::multipart::Part,
         force: bool,
-    ) -> Result<(), api::Error> {
+    ) -> Result<(), Error> {
         let part = part.file_name(filename.to_string());
         let multipart = reqwest::multipart::Form::new().part("imgfile", part);
         let mut req = self
@@ -283,7 +315,7 @@ impl Dial {
         fields(uid = %self.uid),
         err(Display, level = Level::DEBUG),
     )]
-    pub async fn reload_hw_info(&self) -> Result<dial::Status, api::Error> {
+    pub async fn reload_hw_info(&self) -> Result<dial::Status, Error> {
         let rsp = self.build_request(Method::GET, "reload")?.send().await?;
         response_json(rsp).await
     }
@@ -295,9 +327,7 @@ impl fmt::Display for Dial {
     }
 }
 
-async fn response_json<T: serde::de::DeserializeOwned>(
-    rsp: reqwest::Response,
-) -> Result<T, api::Error> {
+async fn response_json<T: serde::de::DeserializeOwned>(rsp: reqwest::Response) -> Result<T, Error> {
     tracing::debug!(rsp.http_status = %rsp.status(), "received response");
     let rsp = rsp.error_for_status()?;
     let body = rsp.bytes().await?;
@@ -312,7 +342,7 @@ async fn response_json<T: serde::de::DeserializeOwned>(
         }
     };
     if json.status != api::Status::Ok {
-        return Err(api::Error::Server(json.message));
+        return Err(Error::Server(json.message));
     }
 
     Ok(json.data)
