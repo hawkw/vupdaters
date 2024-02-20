@@ -1,3 +1,5 @@
+// The `SignalAction::Reload` variant is currently only used on Linux systems.
+#[cfg_attr(windows, allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SignalAction {
     // Basically the only two things we do when handling a signal:
