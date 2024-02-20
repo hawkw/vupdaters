@@ -4,11 +4,13 @@ version = "0.1.0"
 description = "Tools for updating VU-Dials."
 edition = { workspace = true }
 repository = { workspace = true }
+homepage = { workspace = true }
 authors = ["Eliza Weisman <eliza@elizas.website>"]
-license = "MIT"
+license = "MIT OR Apache-2.0"
+categories = ["command-line-utilities", "hardware-support"]
+keywords = ["vu-dials"]
+default-run = "dialctl"
 
-# See more keys and their definitions at
-# https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
 default = ["hotplug"]
 hotplug = ["tokio-udev", "zbus_systemd"]
