@@ -90,10 +90,7 @@ jobs:
       - name: install libudev
         run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: cargo clippy --all-targets --all-features
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets --all-features
+        run: cargo clippy --all-targets --all-features
 
   rustfmt:
     name: Rustfmt (stable)
