@@ -1,5 +1,20 @@
 # vupdaters
 
+[![CI]](https://github.com/hawkw/vupdaters/actions/workflows/ci.yml)
+[![GitHub License]](https://github.com/hawkw/vupdaters/LICENSE)
+[![FlakeHub]](https://flakehub.com/flake/mycoliza/vu-server)
+[![GitHub Downloads]](https://www.elizas.website/vupdaters/artifacts/)
+[![GitHub Sponsors]](https://github.com/sponsors/hawkw/)
+
+
+[CI]: https://github.com/hawkw/vupdaters/actions/workflows/ci.yml/badge.svg
+[GitHub License]: https://img.shields.io/github/license/hawkw/vupdaters?style=flat
+[FlakeHub]:
+    https://img.shields.io/endpoint?url=https://flakehub.com/f/mycoliza/vupdaters/badge
+[GitHub Downloads]:
+    https://img.shields.io/github/downloads/hawkw/vupdaters/total?logo=github
+[GitHub Sponsors]: https://img.shields.io/github/sponsors/hawkw?logo=github
+
 Tools for controlling [Streacom VU-1 dials], written in Rust.
 
 This package provides two binaries:
