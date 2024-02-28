@@ -4,7 +4,7 @@ use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, fs, time::Duration};
-use vu_api::dial::Percent;
+use vu_api::dial::{Backlight, Percent};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
@@ -38,16 +38,37 @@ pub struct DialConfig {
     pub(super) metric: Metric,
     pub(super) update_interval: Duration,
     pub(super) dial_easing: Option<Easing>,
-    pub(super) backlight_easing: Option<Easing>,
+
+    #[serde(flatten)]
+    pub(super) backlight: BacklightSettings,
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct Easing {
     #[serde_as(as = "DurationMilliSeconds<u64>")]
     pub(super) period_ms: Duration,
     pub(super) step: Percent,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct BacklightSettings {
+    #[serde(default, rename = "backlight")]
+    pub(super) mode: BacklightMode,
+    #[serde(default, rename = "backlight_easing")]
+    pub(super) easing: Option<Easing>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum BacklightMode {
+    /// A single, static color.
+    Static(Backlight),
+    /// Backlight off
+    Off,
+}
+
+// === impl Config ===
 
 impl Config {
     pub(super) async fn generate(
@@ -82,10 +103,13 @@ impl Config {
                         period_ms: dial.easing.dial_period,
                         step: dial.easing.dial_step,
                     }),
-                    backlight_easing: Some(Easing {
-                        period_ms: dial.easing.backlight_period,
-                        step: dial.easing.backlight_step,
-                    }),
+                    backlight: BacklightSettings {
+                        mode: BacklightMode::Static(dial.backlight),
+                        easing: Some(Easing {
+                            period_ms: dial.easing.backlight_period,
+                            step: dial.easing.backlight_step,
+                        }),
+                    },
                 },
             );
         }
@@ -181,5 +205,14 @@ impl RetryConfig {
             .with_max_interval(self.max_backoff)
             .with_max_elapsed_time(self.max_elapsed_time);
         builder
+    }
+}
+
+// === impl BacklightMode ===
+
+impl Default for BacklightMode {
+    fn default() -> Self {
+        let color = Backlight::new(50, 50, 50).expect("50 is a valid percent");
+        Self::Static(color)
     }
 }

@@ -4,7 +4,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 use tokio::{sync::watch, task};
 use vu_api::{
     client::{Client, Dial},
@@ -326,7 +326,7 @@ impl DialManager {
                     metric,
                     update_interval,
                     dial_easing,
-                    backlight_easing,
+                    backlight,
                     ..
                 },
             backoff,
@@ -348,7 +348,7 @@ impl DialManager {
             .await?;
         }
 
-        if let Some(config::Easing { period_ms, step }) = backlight_easing {
+        if let Some(config::Easing { period_ms, step }) = backlight.easing {
             tracing::info!(?period_ms, %step, "setting backlight easing...");
             retry(&backoff, "set backlight easing", || {
                 dial.set_backlight_easing(period_ms, step)
@@ -356,10 +356,16 @@ impl DialManager {
             .await?;
         }
 
-        let backlight = Backlight::new(50, 50, 50)?;
+        let backlight_color = match backlight.mode {
+            config::BacklightMode::Static(color) => color,
+            config::BacklightMode::Off => {
+                Backlight::new(0, 0, 0).expect("0,0,0 must be a valid backlight color")
+            }
+        };
+
         tracing::info!(?backlight, "setting dial backlight...");
         retry(&backoff, "set dial backlight", || {
-            dial.set_backlight(backlight)
+            dial.set_backlight(backlight_color)
         })
         .await?;
 
