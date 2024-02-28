@@ -22,6 +22,7 @@ clap = { workspace = true, features = ["std", "derive", "env", "wrap_help"] }
 directories = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+humantime-serde = { workspace = true }
 miette = { workspace = true, features = ["fancy"] }
 reqwest = { workspace = true, default-features = false, features = ["rustls-tls"] }
 serde = { workspace = true, features = ["derive"] }

@@ -6,7 +6,7 @@ members = [
     "protocol",
     "vupdaters",
 ]
-defaultMembers = [
+default-members = [
     "api",
     "vupdaters",
 ]
@@ -26,6 +26,7 @@ camino = "1"
 directories = { version = "5.0.1"}
 futures = { version = "0.3", features = ["async-await"], default-features = false }
 http = { version = "1" }
+humantime-serde = { version = "1.1.1" }
 reqwest = { version = "0.11.24", default-features = false }
 miette = { version = "7.0.0" }
 owo-colors = { version = "4.0.0" }

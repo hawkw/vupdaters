@@ -1,31 +1,70 @@
-# [dials."Swap Usage"]
-# index = 3
-# metric = "swap"
-
-# [dials."Swap Usage".update_interval]
-# secs = 1
-# nanos = 0
-
 [dials."CPU Load"]
 index = 0
 metric = "cpu-load"
+update-interval = "1s"
+easing-period = "50ms"
+easing-step = 2
 
-[dials."CPU Load".update_interval]
-secs = 1
-nanos = 0
+[dials."CPU Load".backlight]
+easing-period = "100ms"
+easing-step = 5
 
-# [dials."Memory Usage"]
-# index = 1
-# metric = "mem"
+[dials."CPU Load".backlight.mode.static]
+red = 99
+green = 96
+blue = 86
 
-# [dials."Memory Usage".update_interval]
-# secs = 1
-# nanos = 0
+[dials."CPU Temperature"]
+index = 2
+metric = "cpu-temp"
+update-interval = "1s"
+easing-period = "50ms"
+easing-step = 2
 
-# [dials."CPU Temperature"]
-# index = 2
-# metric = "cpu-temp"
+[dials."CPU Temperature".backlight]
+easing-period = "100ms"
+easing-step = 5
 
-# [dials."CPU Temperature".update_interval]
-# secs = 1
-# nanos = 0
+[dials."CPU Temperature".backlight.mode.static]
+red = 100
+green = 65
+blue = 0
+
+[dials."Memory Usage"]
+index = 1
+metric = "mem"
+update-interval = "1s"
+easing-period = "50ms"
+easing-step = 2
+
+[dials."Memory Usage".backlight]
+easing-period = "100ms"
+easing-step = 5
+
+[dials."Memory Usage".backlight.mode.static]
+red = 50
+green = 50
+blue = 50
+
+[dials."Swap Usage"]
+index = 3
+metric = "swap"
+update-interval = "1s"
+easing-period = "50ms"
+easing-step = 2
+
+[dials."Swap Usage".backlight]
+easing-period = "100ms"
+easing-step = 5
+
+[dials."Swap Usage".backlight.mode.static]
+red = 50
+green = 50
+blue = 50
+
+[retries]
+initial-backoff = "500ms"
+jitter = 0.5
+multiplier = 1.5
+max-backoff = "1m"
+max-elapsed-time = "15m"

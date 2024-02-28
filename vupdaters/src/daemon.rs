@@ -325,7 +325,7 @@ impl DialManager {
                 DialConfig {
                     metric,
                     update_interval,
-                    dial_easing,
+                    easing,
                     backlight,
                     ..
                 },
@@ -339,19 +339,19 @@ impl DialManager {
         tracing::info!("setting dial name...");
         retry(&backoff, "set dial name", || dial.set_name(&name)).await?;
 
-        if let Some(config::Easing { period_ms, step }) = dial_easing {
-            tracing::info!(?period_ms, %step, "setting dial easing...");
+        if let Some(config::Easing { period, step }) = easing {
+            tracing::info!(?period, %step, "setting dial easing...");
 
             retry(&backoff, "set dial easing", || {
-                dial.set_dial_easing(period_ms, step)
+                dial.set_dial_easing(period, step)
             })
             .await?;
         }
 
-        if let Some(config::Easing { period_ms, step }) = backlight.easing {
-            tracing::info!(?period_ms, %step, "setting backlight easing...");
+        if let Some(config::Easing { period, step }) = backlight.easing {
+            tracing::info!(?period, %step, "setting backlight easing...");
             retry(&backoff, "set backlight easing", || {
-                dial.set_backlight_easing(period_ms, step)
+                dial.set_backlight_easing(period, step)
             })
             .await?;
         }

@@ -2,7 +2,6 @@ use super::Metric;
 use camino::{Utf8Path, Utf8PathBuf};
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, fs, time::Duration};
 use vu_api::dial::{Backlight, Percent};
 
@@ -17,7 +16,10 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct RetryConfig {
-    #[serde(default = "RetryConfig::default_initial_backoff")]
+    #[serde(
+        with = "humantime_serde",
+        default = "RetryConfig::default_initial_backoff"
+    )]
     initial_backoff: Duration,
 
     #[serde(default = "RetryConfig::default_jitter")]
@@ -26,10 +28,10 @@ pub struct RetryConfig {
     #[serde(default = "RetryConfig::default_multiplier")]
     multiplier: f64,
 
-    #[serde(default = "RetryConfig::default_max_backoff")]
+    #[serde(with = "humantime_serde", default = "RetryConfig::default_max_backoff")]
     max_backoff: Duration,
 
-    #[serde(default)]
+    #[serde(with = "humantime_serde", default)]
     max_elapsed_time: Option<Duration>,
 }
 
@@ -38,27 +40,27 @@ pub struct RetryConfig {
 pub struct DialConfig {
     pub(super) index: usize,
     pub(super) metric: Metric,
+    #[serde(with = "humantime_serde")]
     pub(super) update_interval: Duration,
-    pub(super) dial_easing: Option<Easing>,
+    #[serde(flatten, with = "prefix_easing")]
+    pub(super) easing: Option<Easing>,
 
-    #[serde(flatten)]
     pub(super) backlight: BacklightSettings,
 }
 
-#[serde_as]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct Easing {
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
-    pub(super) period_ms: Duration,
+    #[serde(with = "humantime_serde")]
+    pub(super) period: Duration,
     pub(super) step: Percent,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(super) struct BacklightSettings {
-    #[serde(default, rename = "backlight")]
+    #[serde(default)]
     pub(super) mode: BacklightMode,
-    #[serde(default, rename = "backlight-easing")]
+    #[serde(default, flatten, with = "prefix_easing")]
     pub(super) easing: Option<Easing>,
 }
 
@@ -71,6 +73,7 @@ pub(super) enum BacklightMode {
     Off,
 }
 
+serde_with::with_prefix!(prefix_easing "easing-");
 // === impl Config ===
 
 impl Config {
@@ -102,14 +105,14 @@ impl Config {
                     index,
                     metric,
                     update_interval: Duration::from_secs(1),
-                    dial_easing: Some(Easing {
-                        period_ms: dial.easing.dial_period,
+                    easing: Some(Easing {
+                        period: dial.easing.dial_period,
                         step: dial.easing.dial_step,
                     }),
                     backlight: BacklightSettings {
                         mode: BacklightMode::Static(dial.backlight),
                         easing: Some(Easing {
-                            period_ms: dial.easing.backlight_period,
+                            period: dial.easing.backlight_period,
                             step: dial.easing.backlight_step,
                         }),
                     },
