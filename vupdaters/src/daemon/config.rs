@@ -1,8 +1,9 @@
 use super::Metric;
 use camino::{Utf8Path, Utf8PathBuf};
+use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, fs, time::Duration};
 use vu_api::dial::Percent;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -49,6 +50,83 @@ pub(super) struct Easing {
 }
 
 impl Config {
+    pub(super) async fn generate(
+        client: &vu_api::client::Client,
+        metrics: Vec<Metric>,
+    ) -> miette::Result<Self> {
+        tracing::info!("generating config with metrics: {metrics:?}");
+        let mut config = Self::default();
+        let dials = client.list_dials().await?;
+        if dials.len() < metrics.len() {
+            tracing::warn!("not enough dials available to display all requested metrics!");
+            tracing::warn!(
+                "the generated config will only include the following metrics: {:?}",
+                &metrics[..dials.len()]
+            );
+        }
+
+        for (metric, (dial, info)) in metrics.into_iter().zip(dials) {
+            let dial = dial
+                .status()
+                .await
+                .with_context(|| format!("failed to get status for {}", info.uid))?;
+            let index = dial.index;
+            tracing::info!("Assigning dial {index} to {metric:?}");
+            config.dials.insert(
+                metric.dial_name().to_string(),
+                DialConfig {
+                    index,
+                    metric,
+                    update_interval: Duration::from_secs(1),
+                    dial_easing: Some(Easing {
+                        period_ms: dial.easing.dial_period,
+                        step: dial.easing.dial_step,
+                    }),
+                    backlight_easing: Some(Easing {
+                        period_ms: dial.easing.backlight_period,
+                        step: dial.easing.backlight_step,
+                    }),
+                },
+            );
+        }
+
+        Ok(config)
+    }
+
+    pub(super) fn write(&self, path: impl AsRef<Utf8Path>) -> miette::Result<()> {
+        use std::io::Write;
+
+        let toml = toml::to_string_pretty(self).into_diagnostic()?;
+        tracing::info!(config = %toml);
+
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .into_diagnostic()
+                .with_context(|| format!("failed to create {parent}"))?;
+        }
+        fs::File::create(path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to create {path}"))?
+            .write_all(toml.as_bytes())
+            .into_diagnostic()
+            .with_context(|| format!("failed to write to {path}"))?;
+
+        Ok(())
+    }
+
+    pub(super) fn load(path: impl AsRef<Utf8Path>) -> miette::Result<Self> {
+        let path = path.as_ref();
+        tracing::info!("loading config from {path}...");
+
+        let file = fs::read_to_string(path)
+            .into_diagnostic()
+            .with_context(|| format!("failed to read config file '{path}'"))?;
+        toml::from_str(&file)
+            .into_diagnostic()
+            .with_context(|| format!("failed to parse config file '{path}'"))
+    }
+
     pub(super) fn default_path() -> Utf8PathBuf {
         directories::BaseDirs::new()
             .and_then(|dirs| {

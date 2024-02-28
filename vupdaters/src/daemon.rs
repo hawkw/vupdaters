@@ -136,7 +136,9 @@ impl Args {
             .context("failed to build client")?;
         match subcommand {
             Some(Subcommand::GenConfig { metrics }) => {
-                gen_config(&client, config_path, metrics).await?
+                Config::generate(&client, metrics)
+                    .await?
+                    .write(&config_path)?;
             }
             None => {
                 tracing::info!("starting daemon...");
@@ -146,68 +148,6 @@ impl Args {
 
         Ok(())
     }
-}
-
-async fn gen_config(
-    client: &vu_api::client::Client,
-    config_path: impl AsRef<Utf8Path>,
-    metrics: Vec<Metric>,
-) -> miette::Result<()> {
-    use std::io::Write;
-
-    tracing::info!("generating config with metrics: {metrics:?}");
-    let mut config = Config::default();
-    let dials = client.list_dials().await?;
-    if dials.len() < metrics.len() {
-        tracing::warn!("not enough dials available to display all requested metrics!");
-        tracing::warn!(
-            "the generated config will only include the following metrics: {:?}",
-            &metrics[..dials.len()]
-        );
-    }
-
-    for (metric, (dial, info)) in metrics.into_iter().zip(dials) {
-        let dial = dial
-            .status()
-            .await
-            .with_context(|| format!("failed to get status for {}", info.uid))?;
-        let index = dial.index;
-        tracing::info!("Assigning dial {index} to {metric:?}");
-        config.dials.insert(
-            metric.dial_name().to_string(),
-            DialConfig {
-                index,
-                metric,
-                update_interval: Duration::from_secs(1),
-                dial_easing: Some(config::Easing {
-                    period_ms: dial.easing.dial_period,
-                    step: dial.easing.dial_step,
-                }),
-                backlight_easing: Some(config::Easing {
-                    period_ms: dial.easing.backlight_period,
-                    step: dial.easing.backlight_step,
-                }),
-            },
-        );
-    }
-
-    let toml = toml::to_string_pretty(&config).into_diagnostic()?;
-    tracing::info!(config = %toml);
-
-    let path = config_path.as_ref();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .into_diagnostic()
-            .with_context(|| format!("failed to create {parent}"))?;
-    }
-    std::fs::File::create(path)
-        .into_diagnostic()
-        .with_context(|| format!("failed to create {path}"))?
-        .write_all(toml.as_bytes())
-        .into_diagnostic()
-        .with_context(|| format!("failed to write to {path}"))?;
-
-    Ok(())
 }
 
 impl Metric {
@@ -320,18 +260,6 @@ pub async fn run_daemon(
 }
 
 impl Config {
-    fn load(path: impl AsRef<Utf8Path>) -> miette::Result<Self> {
-        let path = path.as_ref();
-        tracing::info!("loading config from {path}...");
-
-        let file = std::fs::read_to_string(path)
-            .into_diagnostic()
-            .with_context(|| format!("failed to read config file '{path}'"))?;
-        toml::from_str(&file)
-            .into_diagnostic()
-            .with_context(|| format!("failed to parse config file '{path}'"))
-    }
-
     async fn spawn_dial_managers(
         &self,
         client: &Client,
