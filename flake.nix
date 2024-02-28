@@ -166,22 +166,22 @@
                   "CPU Load" = {
                     index = 0;
                     metric = "cpu-load";
-                    update_interval = defaultUpdateInterval;
+                    update-interval = defaultUpdateInterval;
                   };
                   "Memory Usage" = {
                     index = 1;
                     metric = "mem";
-                    update_interval = defaultUpdateInterval;
+                    update-interval = defaultUpdateInterval;
                   };
                   "CPU Temperature" = {
                     index = 2;
                     metric = "cpu-temp";
-                    update_interval = defaultUpdateInterval;
+                    update-interval = defaultUpdateInterval;
                   };
                   "Swap Usage" = {
                     index = 3;
                     metric = "swap";
-                    update_interval = defaultUpdateInterval;
+                    update-interval = defaultUpdateInterval;
                   };
                 };
             in

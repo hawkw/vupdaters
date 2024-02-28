@@ -15,6 +15,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct RetryConfig {
     #[serde(default = "RetryConfig::default_initial_backoff")]
     initial_backoff: Duration,
@@ -33,6 +34,7 @@ pub struct RetryConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct DialConfig {
     pub(super) index: usize,
     pub(super) metric: Metric,
@@ -52,15 +54,16 @@ pub(super) struct Easing {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(super) struct BacklightSettings {
     #[serde(default, rename = "backlight")]
     pub(super) mode: BacklightMode,
-    #[serde(default, rename = "backlight_easing")]
+    #[serde(default, rename = "backlight-easing")]
     pub(super) easing: Option<Easing>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub(super) enum BacklightMode {
     /// A single, static color.
     Static(Backlight),
