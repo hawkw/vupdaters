@@ -1,8 +1,9 @@
+use self::config::{Config, DialConfig};
+use crate::MultiError;
 use camino::{Utf8Path, Utf8PathBuf};
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
 use tokio::{sync::watch, task};
 use vu_api::{
@@ -10,52 +11,10 @@ use vu_api::{
     dial::{Backlight, Percent},
 };
 
-use crate::MultiError;
-
+pub mod config;
 #[cfg(all(target_os = "linux", feature = "hotplug"))]
 mod hotplug;
 mod signal;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Config {
-    dials: HashMap<String, DialConfig>,
-
-    #[serde(default)]
-    retries: RetryConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetryConfig {
-    #[serde(default = "RetryConfig::default_initial_backoff")]
-    initial_backoff: Duration,
-    #[serde(default = "RetryConfig::default_jitter")]
-    jitter: f64,
-    #[serde(default = "RetryConfig::default_multiplier")]
-    multiplier: f64,
-
-    #[serde(default = "RetryConfig::default_max_backoff")]
-    max_backoff: Duration,
-
-    #[serde(default)]
-    max_elapsed_time: Option<Duration>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DialConfig {
-    index: usize,
-    metric: Metric,
-    update_interval: Duration,
-    dial_easing: Option<Easing>,
-    backlight_easing: Option<Easing>,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Easing {
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
-    period_ms: Duration,
-    step: Percent,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
@@ -90,7 +49,7 @@ pub struct Args {
     #[clap(
         long = "config",
         short = 'c',
-        default_value_t = default_config_path(),
+        default_value_t = Config::default_path(),
         value_hint = clap::ValueHint::FilePath,
         global = true,
     )]
@@ -162,19 +121,6 @@ struct DialManager {
     running: watch::Receiver<bool>,
 }
 
-fn default_config_path() -> Utf8PathBuf {
-    directories::BaseDirs::new()
-        .and_then(|dirs| {
-            let path = Utf8Path::from_path(dirs.config_dir())?.join("vupdate/config.toml");
-            Some(path)
-        })
-        .unwrap_or_else(|| {
-            ["$HOME", ".config", "vupdate", "config.toml"]
-                .iter()
-                .collect()
-        })
-}
-
 impl Args {
     pub async fn run(self) -> miette::Result<()> {
         let Self {
@@ -233,11 +179,11 @@ async fn gen_config(
                 index,
                 metric,
                 update_interval: Duration::from_secs(1),
-                dial_easing: Some(Easing {
+                dial_easing: Some(config::Easing {
                     period_ms: dial.easing.dial_period,
                     step: dial.easing.dial_step,
                 }),
-                backlight_easing: Some(Easing {
+                backlight_easing: Some(config::Easing {
                     period_ms: dial.easing.backlight_period,
                     step: dial.easing.backlight_step,
                 }),
@@ -465,7 +411,7 @@ impl DialManager {
         tracing::info!("setting dial name...");
         retry(&backoff, "set dial name", || dial.set_name(&name)).await?;
 
-        if let Some(Easing { period_ms, step }) = dial_easing {
+        if let Some(config::Easing { period_ms, step }) = dial_easing {
             tracing::info!(?period_ms, %step, "setting dial easing...");
 
             retry(&backoff, "set dial easing", || {
@@ -474,7 +420,7 @@ impl DialManager {
             .await?;
         }
 
-        if let Some(Easing { period_ms, step }) = backlight_easing {
+        if let Some(config::Easing { period_ms, step }) = backlight_easing {
             tracing::info!(?period_ms, %step, "setting backlight easing...");
             retry(&backoff, "set backlight easing", || {
                 dial.set_backlight_easing(period_ms, step)
@@ -670,49 +616,6 @@ where
         },
     )
     .await
-}
-
-// === impl RetryConfig ===
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            initial_backoff: Self::default_initial_backoff(),
-            jitter: Self::default_jitter(),
-            max_backoff: Self::default_max_backoff(),
-            max_elapsed_time: Some(Duration::from_millis(
-                backoff::default::MAX_ELAPSED_TIME_MILLIS,
-            )),
-            multiplier: Self::default_multiplier(),
-        }
-    }
-}
-
-impl RetryConfig {
-    const fn default_initial_backoff() -> Duration {
-        Duration::from_millis(backoff::default::INITIAL_INTERVAL_MILLIS)
-    }
-    const fn default_jitter() -> f64 {
-        backoff::default::RANDOMIZATION_FACTOR
-    }
-
-    const fn default_max_backoff() -> Duration {
-        Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS)
-    }
-
-    const fn default_multiplier() -> f64 {
-        backoff::default::MULTIPLIER
-    }
-
-    fn backoff_builder(&self) -> backoff::ExponentialBackoffBuilder {
-        let mut builder = backoff::ExponentialBackoffBuilder::new();
-        builder
-            .with_initial_interval(self.initial_backoff)
-            .with_randomization_factor(self.jitter)
-            .with_max_interval(self.max_backoff)
-            .with_max_elapsed_time(self.max_elapsed_time);
-        builder
-    }
 }
 
 fn backoff_error(error: vu_api::client::Error) -> backoff::Error<vu_api::client::Error> {
