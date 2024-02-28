@@ -110,6 +110,7 @@
         configFormat = pkgs.formats.toml { };
         configFile = configFormat.generate "${daemonName}.toml" {
           dials = cfg.dials;
+          retries = cfg.client.retries;
         };
         execStart = ''
           ${self.packages.${pkgs.system}.default}/bin/vupdated \
@@ -118,7 +119,10 @@
           --server http://${cfg.client.hostname}:${toString cfg.client.port}'';
       in
       {
-        options.services.vu-dials.${daemonName} = with types; {
+        options.services.vu-dials.${daemonName} = with types; let
+          duration = uniq str;
+        in
+        {
           enable = mkEnableOption "Enable the VU-1 dials update daemon";
           enableHotplug = mkEnableOption "Enable USB hotplug support for VU-Server";
           logFilter = mkOption
@@ -152,15 +156,45 @@
                   example = defaultApiKey;
                   description = "API key to use when communicating with the VU-1 HTTP server";
                 };
+                retries = mkOption {
+                  description = "VU-Server client retry configuration";
+                  default = { };
+
+                  type = submodule {
+                    options = {
+                      initial-backoff = mkOption {
+                        type = duration;
+                        default = "500ms";
+                        example = "500ms";
+                        description = "Initial backoff time for retries";
+                      };
+                      jitter = mkOption {
+                        type = uniq float;
+                        default = 0.5;
+                        example = 0.5;
+                        description = "Random jitter factor for retry backoff. When backing off, the duration will be multiplied by a random number between `jitter` and `jitter + 1`";
+                      };
+                      multiplier = mkOption {
+                        type = uniq float;
+                        default = 1.5;
+                        example = 1.5;
+                        description = "Exponential backoff multiplier. When backing off, the previous backoff duration will be multiplied by this number.";
+                      };
+                      max-backoff = mkOption {
+                        type = duration;
+                        default = "10m";
+                        example = "10m";
+                        description = "Maximum backoff time for retries. If a request has not succeeded within this duration, the request will be permanently failed.";
+                      };
+                    };
+                  };
+                };
               };
             };
           };
           dials =
             let
-              defaultUpdateInterval = {
-                secs = 1;
-                nanos = 0;
-              };
+              defaultUpdateInterval = "1s";
               defaultDials =
                 {
                   "CPU Load" = {
