@@ -1,11 +1,12 @@
 use self::config::{Config, DialConfig};
 use crate::MultiError;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8PathBuf;
 use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use tokio::{sync::watch, task};
+use tracing::Instrument;
 use vu_api::{
     client::{Client, Dial},
     dial::{Backlight, Percent},
@@ -197,12 +198,11 @@ struct ImgFile {
 
 pub async fn run_daemon(
     client: Client,
-    config_path: impl AsRef<Utf8Path>,
+    config_path: Utf8PathBuf,
     hotplug: HotplugSettings,
 ) -> miette::Result<()> {
     use signal::{SignalAction, SignalListener};
 
-    let mut tasks = task::JoinSet::new();
     let mut signals = SignalListener::new()?;
 
     let (_running_tx, running) = watch::channel(true);
@@ -216,43 +216,61 @@ pub async fn run_daemon(
         miette::bail!("hotplug support is currently only available on Linux!");
     };
 
-    let config = Config::load(&config_path)?;
-    config
-        .spawn_dial_managers(&client, &running, &mut tasks)
-        .await
-        .context("failed to spawn dial managers")?;
+    let config_reloaded = Arc::new(tokio::sync::Notify::new());
+    let mut dial_managers = tokio::task::spawn_local({
+        let config_reloaded = config_reloaded.clone();
+        async move {
+            let mut tasks = task::JoinSet::new();
+            loop {
+                let config = Config::load(&config_path)?;
+                config
+                    .spawn_dial_managers(&client, &running, &mut tasks)
+                    .await
+                    .context("failed to spawn dial managers")?;
+
+                tokio::select! {
+                    _ = config_reloaded.notified() => {
+                        tracing::info!("Received reload signal, reloading config...");
+                        tasks.shutdown().await;
+                    },
+                    join = tasks.join_next() => {
+                        match join {
+                            Some(error) => {
+                                error.into_diagnostic()
+                                    .context("a dial manager task panicked")?
+                                    .context("a dial manager task failed")?;
+                                break;
+                            },
+                            None => break,
+                        }
+                    }
+                }
+            }
+            Ok::<(), miette::Error>(())
+        }
+    })
+    .instrument(tracing::info_span!("dial-managers"));
 
     loop {
         tokio::select! {
             signal = signals.next_signal() => {
                 match signal {
                     SignalAction::Reload => {
-                        tracing::info!("Received SIGHUP, reloading config...");
-                        tasks.shutdown().await;
-
-                        let config = Config::load(&config_path)?;
-                        config
-                            .spawn_dial_managers(&client, &running, &mut tasks)
-                            .await
-                            .context("failed to spawn dial managers")?;
+                        config_reloaded.notify_one();
                     }
                     SignalAction::Shutdown => {
-                        tracing::info!("Received SIGINT, shutting down");
+                        tracing::info!("Received shutdown signal, shutting down");
                         break;
                     }
                 }
+            },
+            res = &mut dial_managers => {
+                tracing::warn!("Dial managers terminated, shutting down...");
+                res.into_diagnostic()
+                    .context("dial manager task panicked")??;
+                break;
             }
-            join = tasks.join_next() => {
-                match join {
-                    Some(error) => {
-                        error.into_diagnostic()
-                            .context("a dial manager task panicked")?
-                            .context("a dial manager task failed")?;
-                        break;
-                    },
-                    None => break,
-                }
-            }
+
         }
     }
 
